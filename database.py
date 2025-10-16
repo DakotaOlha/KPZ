@@ -285,3 +285,156 @@ class DatabaseManager:
     def close(self):
         if self.conn:
             self.conn.close()
+
+    def get_words_statistics(self, start_date=None, end_date=None):
+        query = """
+                SELECT CAST(w.last_shown AS DATE) as study_date, \
+                       COUNT(*)                   as words_count
+                FROM Words w
+                WHERE w.is_archived = 0 \
+                """
+        params = []
+
+        if start_date:
+            query += " AND CAST(w.last_shown AS DATE) >= ?"
+            params.append(start_date)
+        if end_date:
+            query += " AND CAST(w.last_shown AS DATE) <= ?"
+            params.append(end_date)
+
+        query += " GROUP BY CAST(w.last_shown AS DATE) ORDER BY study_date"
+
+        self.cursor.execute(query, params)
+        return self.cursor.fetchall()
+
+    def get_words_by_difficulty(self):
+        try:
+            query = """
+                    SELECT w.difficulty_level, \
+                           COUNT(*) as count,
+                    SUM(CASE WHEN w.knowledge_level >= 5 THEN 1 ELSE 0 END) as learned
+                    FROM Words w
+                    WHERE w.is_archived = 0
+                    GROUP BY w.difficulty_level
+                    ORDER BY w.difficulty_level \
+                    """
+            self.cursor.execute(query)
+            results = self.cursor.fetchall()
+            return results if results else []
+        except Exception as e:
+            print(f"Помилка в get_words_by_difficulty: {e}")
+            return []
+
+    def get_knowledge_level_distribution(self):
+        try:
+            query = """
+                    SELECT w.knowledge_level, \
+                           COUNT(*) as count
+                    FROM Words w
+                    WHERE w.is_archived = 0
+                    GROUP BY w.knowledge_level
+                    ORDER BY w.knowledge_level \
+                    """
+            self.cursor.execute(query)
+            results = self.cursor.fetchall()
+            return results if results else []
+        except Exception as e:
+            print(f"Помилка в get_knowledge_level_distribution: {e}")
+            return []
+
+    def get_category_statistics(self):
+        try:
+            query = """
+                SELECT 
+                    ISNULL(c.name, 'Без категорії') as name,
+                    COUNT(w.id) as total,
+                    SUM(CASE WHEN w.knowledge_level >= 5 THEN 1 ELSE 0 END) as learned,
+                    SUM(CASE WHEN w.knowledge_level BETWEEN 1 AND 4 THEN 1 ELSE 0 END) as learning,
+                    SUM(CASE WHEN w.knowledge_level = 0 THEN 1 ELSE 0 END) as new_words
+                FROM Words w
+                LEFT JOIN Categories c ON w.category_id = c.id
+                WHERE w.is_archived = 0
+                GROUP BY c.name, c.id
+                ORDER BY c.name
+            """
+            self.cursor.execute(query)
+            results = self.cursor.fetchall()
+            return results if results else []
+        except Exception as e:
+            print(f"Помилка в get_category_statistics: {e}")
+            return []
+
+    def get_daily_statistics(self, days=30):
+        try:
+            self.cursor.execute("""
+                                SELECT TABLE_NAME
+                                FROM INFORMATION_SCHEMA.TABLES
+                                WHERE TABLE_NAME = 'Interactions'
+                                """)
+            has_interactions = self.cursor.fetchone() is not None
+
+            if has_interactions:
+                query = """
+                        SELECT TOP ? CAST(i.interaction_date AS DATE) as study_date,
+                        SUM(CASE WHEN i.is_correct = 1 THEN 1 ELSE 0 END) as correct_answers,
+                        COUNT(*) as total_interactions
+                        FROM Interactions i
+                        WHERE i.interaction_date >= DATEADD(day, -?, CAST (GETDATE() AS DATE))
+                        GROUP BY CAST (i.interaction_date AS DATE)
+                        ORDER BY study_date DESC \
+                        """
+                self.cursor.execute(query, (days, days))
+            else:
+                query = """
+                        SELECT CAST(w.last_shown AS DATE)                                         as study_date, \
+                               SUM(CASE WHEN w.times_correct > 0 THEN w.times_correct ELSE 0 END) as correct_answers, \
+                               SUM(CASE \
+                                       WHEN w.times_correct > 0 OR w.times_wrong > 0 \
+                                           THEN w.times_correct + w.times_wrong \
+                                       ELSE 0 END)                                                as total_interactions
+                        FROM Words w
+                        WHERE w.is_archived = 0
+                          AND w.last_shown IS NOT NULL
+                          AND CAST(w.last_shown AS DATE) >= DATEADD(day, -?, CAST(GETDATE() AS DATE))
+                        GROUP BY CAST(w.last_shown AS DATE)
+                        ORDER BY study_date DESC \
+                        """
+                self.cursor.execute(query, (days,))
+
+            results = self.cursor.fetchall()
+            return sorted(results, key=lambda x: x[0]) if results else []
+        except Exception as e:
+            print(f"Помилка в get_daily_statistics: {e}")
+            return []
+
+    def get_words_added_by_date(self, start_date=None, end_date=None):
+        query = """
+                SELECT CAST(w.created_at AS DATE) as added_date, \
+                       COUNT(*)                   as words_count
+                FROM Words w
+                WHERE w.is_archived = 0 \
+                """
+        params = []
+
+        if start_date:
+            query += " AND CAST(w.created_at AS DATE) >= ?"
+            params.append(start_date)
+        if end_date:
+            query += " AND CAST(w.created_at AS DATE) <= ?"
+            params.append(end_date)
+
+        query += " GROUP BY CAST(w.created_at AS DATE) ORDER BY added_date"
+
+        self.cursor.execute(query, params)
+        return self.cursor.fetchall()
+
+    def get_learning_progress(self, days=30):
+        query = """
+                SELECT CAST(DATEADD(day, -ROW_NUMBER() OVER (ORDER BY GETDATE()), CAST(GETDATE() AS DATE)) AS DATE) as date,
+                (SELECT COUNT(*) FROM Words WHERE knowledge_level >= 5 AND is_archived = 0
+                 AND CAST(last_shown AS DATE) <= CAST(DATEADD(day, -ROW_NUMBER() OVER (ORDER BY GETDATE()), CAST(GETDATE() AS DATE)) AS DATE)) as learned_count
+                FROM (SELECT TOP ? 1 as n FROM (SELECT 1 UNION ALL SELECT 1) a CROSS JOIN (SELECT 1 UNION ALL SELECT 1) b) numbers
+                ORDER BY date \
+                """
+        self.cursor.execute(query, (days,))
+        return self.cursor.fetchall()

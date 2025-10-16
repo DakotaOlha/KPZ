@@ -44,6 +44,7 @@ class MainApp(ctk.CTk):
             ("📊 Дашборд", self.show_dashboard, "#3B82F6"),
             ("🃏 Картки", self.show_flashcards, "#8B5CF6"),
             ("📖 Мої слова", self.show_words, "#10B981"),
+            ("📈 Статистика", self.show_statistics, "#F59E0B"),
             ("➕ Додати слово", self.show_add_word, "#F59E0B"),
             ("⚙️ Налаштування", self.show_settings, "#64748B"),
         ]
@@ -185,6 +186,11 @@ class MainApp(ctk.CTk):
         self.highlight_menu_button(1)
         FlashcardWindow(self, self.db)
 
+    def show_statistics(self):
+        self.highlight_menu_button(3)
+        from windows.statistics_window import StatisticsWindow
+        StatisticsWindow(self, self.db)
+
     def show_words(self):
         self.clear_main_container()
         self.highlight_menu_button(2)
@@ -203,38 +209,47 @@ class MainApp(ctk.CTk):
         ctk.CTkLabel(search_frame, text="🔍 Пошук:").pack(side="left", padx=(0, 10))
         self.search_entry = ctk.CTkEntry(search_frame, width=250, height=35)
         self.search_entry.pack(side="left")
+        self.search_entry.bind("<KeyRelease>", lambda e: self.load_words())
         cat_frame = ctk.CTkFrame(filter_frame, fg_color="transparent")
         cat_frame.pack(side="left", padx=15, pady=15)
         ctk.CTkLabel(cat_frame, text="📁 Категорія:").pack(side="left", padx=(0, 10))
         categories = ["Всі"] + [cat[1] for cat in self.db.get_categories()]
         self.category_var = ctk.StringVar(value="Всі")
-        ctk.CTkOptionMenu(
+        self.category_menu = ctk.CTkOptionMenu(
             cat_frame,
             values=categories,
             variable=self.category_var,
             width=180,
-            height=35
-        ).pack(side="left")
+            height=35,
+            command=lambda x: self.load_words()
+        )
+        self.category_menu.pack(side="left")
         sort_frame = ctk.CTkFrame(filter_frame, fg_color="transparent")
         sort_frame.pack(side="left", padx=15, pady=15)
         ctk.CTkLabel(sort_frame, text="↕️ Сортування:").pack(side="left", padx=(0, 10))
         self.sort_var = ctk.StringVar(value="word")
-        ctk.CTkOptionMenu(
+        self.sort_menu = ctk.CTkOptionMenu(
             sort_frame,
             values=["word", "translation", "knowledge_level", "category", "difficulty"],
             variable=self.sort_var,
             width=180,
-            height=35
-        ).pack(side="left")
-        ctk.CTkButton(
-            filter_frame,
-            text="Застосувати",
-            command=self.load_words,
-            width=120,
             height=35,
-            fg_color="#3B82F6",
-            hover_color="#2563EB"
-        ).pack(side="left", padx=15)
+            command=lambda x: self.load_words()
+        )
+        self.sort_menu.pack(side="left")
+        group_frame = ctk.CTkFrame(filter_frame, fg_color="transparent")
+        group_frame.pack(side="left", padx=15, pady=15)
+        ctk.CTkLabel(group_frame, text="📊 Групування:").pack(side="left", padx=(0, 10))
+        self.group_var = ctk.StringVar(value="none")
+        self.group_menu = ctk.CTkOptionMenu(
+            group_frame,
+            values=["none", "category", "knowledge_level", "difficulty"],
+            variable=self.group_var,
+            width=180,
+            height=35,
+            command=lambda x: self.load_words()
+        )
+        self.group_menu.pack(side="left")
         self.words_scroll_frame = ctk.CTkScrollableFrame(container, fg_color="#1E293B")
         self.words_scroll_frame.pack(fill="both", expand=True, pady=10)
         self.load_words()
@@ -242,6 +257,20 @@ class MainApp(ctk.CTk):
     def load_words(self):
         for widget in self.words_scroll_frame.winfo_children():
             widget.destroy()
+
+        search = self.search_entry.get() if hasattr(self, 'search_entry') else ""
+        category = self.category_var.get() if hasattr(self, 'category_var') else "Всі"
+        sort = self.sort_var.get() if hasattr(self, 'sort_var') else "word"
+        group = self.group_var.get() if hasattr(self, 'group_var') else "none"
+
+        words = self.db.get_all_words(search, category, sort)
+
+        if group == "none":
+            self.display_words_table(words)
+        else:
+            self.display_grouped_words(words, group)
+
+    def display_words_table(self, words):
         headers_frame = ctk.CTkFrame(self.words_scroll_frame, fg_color="#334155", height=50)
         headers_frame.pack(fill="x", pady=(0, 5))
         headers = ["⭐", "Слово", "Переклад", "Рівень", "Категорія", "Статистика", "Дії"]
@@ -253,15 +282,49 @@ class MainApp(ctk.CTk):
                 font=ctk.CTkFont(size=14, weight="bold"),
                 width=width
             ).pack(side="left", padx=10, pady=10)
-        search = self.search_entry.get() if hasattr(self, 'search_entry') else ""
-        category = self.category_var.get() if hasattr(self, 'category_var') else "Всі"
-        sort = self.sort_var.get() if hasattr(self, 'sort_var') else "word"
-        words = self.db.get_all_words(search, category, sort)
+
         for word in words:
             self.create_word_row(word)
 
-    def create_word_row(self, word):
-        row = ctk.CTkFrame(self.words_scroll_frame, fg_color="#1E293B", height=60)
+    def display_grouped_words(self, words, group_by):
+        from itertools import groupby
+
+        group_labels = {
+            "category": lambda w: w[5] or "Без категорії",
+            "knowledge_level": lambda w: f"Рівень {w[4]}",
+            "difficulty": lambda w: ["Легке", "Середнє", "Складне", "Дуже складне", "Експертне"][min(w[10] - 1, 4)]
+        }
+
+        get_group = group_labels.get(group_by)
+        if not get_group:
+            self.display_words_table(words)
+            return
+
+        sorted_words = sorted(words, key=get_group)
+
+        for group_name, group_items in groupby(sorted_words, key=get_group):
+            group_frame = ctk.CTkFrame(self.words_scroll_frame, fg_color="transparent")
+            group_frame.pack(fill="x", pady=(20, 5), padx=10)
+
+            header_label = ctk.CTkLabel(
+                group_frame,
+                text=f"▼ {group_name}",
+                font=ctk.CTkFont(size=16, weight="bold"),
+                text_color="#3B82F6"
+            )
+            header_label.pack(anchor="w", pady=(0, 10))
+
+            inner_frame = ctk.CTkFrame(self.words_scroll_frame, fg_color="#1E293B")
+            inner_frame.pack(fill="x", pady=(0, 10))
+
+            for word in group_items:
+                self.create_word_row(word, parent=inner_frame)
+
+    def create_word_row(self, word, parent=None):
+        if parent is None:
+            parent = self.words_scroll_frame
+
+        row = ctk.CTkFrame(parent, fg_color="#1E293B", height=60)
         row.pack(fill="x", pady=2)
         fav_btn = ctk.CTkButton(
             row,
@@ -323,7 +386,7 @@ class MainApp(ctk.CTk):
 
     def show_add_word(self):
         self.clear_main_container()
-        self.highlight_menu_button(3)
+        self.highlight_menu_button(4)
         container = ctk.CTkScrollableFrame(self.main_container, fg_color="transparent")
         container.pack(fill="both", expand=True, padx=50, pady=30)
         title = ctk.CTkLabel(
@@ -424,7 +487,7 @@ class MainApp(ctk.CTk):
 
     def show_settings(self):
         self.clear_main_container()
-        self.highlight_menu_button(4)
+        self.highlight_menu_button(5)
         container = ctk.CTkScrollableFrame(self.main_container, fg_color="transparent")
         container.pack(fill="both", expand=True, padx=50, pady=30)
         title = ctk.CTkLabel(
