@@ -365,46 +365,57 @@ class DatabaseManager:
             return []
 
     def get_daily_statistics(self, days=30):
+        """Отримати щоденну статистику з кращою обробкою помилок"""
         try:
+            # Перевіряємо, чи існує таблиця Interactions
             self.cursor.execute("""
-                                SELECT TABLE_NAME
+                                SELECT COUNT(*)
                                 FROM INFORMATION_SCHEMA.TABLES
                                 WHERE TABLE_NAME = 'Interactions'
                                 """)
-            has_interactions = self.cursor.fetchone() is not None
+            has_interactions = self.cursor.fetchone()[0] > 0
 
             if has_interactions:
                 query = """
-                        SELECT TOP ? CAST(i.interaction_date AS DATE) as study_date,
-                        SUM(CASE WHEN i.is_correct = 1 THEN 1 ELSE 0 END) as correct_answers,
-                        COUNT(*) as total_interactions
+                        SELECT CAST(i.interaction_date AS DATE)                  as study_date,
+                               SUM(CASE WHEN i.is_correct = 1 THEN 1 ELSE 0 END) as correct_answers,
+                               COUNT(*)                                          as total_interactions
                         FROM Interactions i
-                        WHERE i.interaction_date >= DATEADD(day, -?, CAST (GETDATE() AS DATE))
-                        GROUP BY CAST (i.interaction_date AS DATE)
-                        ORDER BY study_date DESC \
+                        WHERE i.interaction_date >= DATEADD(day, -?, GETDATE())
+                        GROUP BY CAST(i.interaction_date AS DATE)
+                        ORDER BY study_date \
                         """
-                self.cursor.execute(query, (days, days))
+                self.cursor.execute(query, (days,))
             else:
+                # Альтернативний запит для статистики з таблиці Words
                 query = """
-                        SELECT CAST(w.last_shown AS DATE)                                         as study_date, \
+                        SELECT CAST(COALESCE(w.last_shown, w.created_at) AS DATE)                 as study_date, \
                                SUM(CASE WHEN w.times_correct > 0 THEN w.times_correct ELSE 0 END) as correct_answers, \
-                               SUM(CASE \
-                                       WHEN w.times_correct > 0 OR w.times_wrong > 0 \
-                                           THEN w.times_correct + w.times_wrong \
-                                       ELSE 0 END)                                                as total_interactions
+                               SUM(COALESCE(w.times_correct, 0) + COALESCE(w.times_wrong, 0))     as total_interactions
                         FROM Words w
                         WHERE w.is_archived = 0
-                          AND w.last_shown IS NOT NULL
-                          AND CAST(w.last_shown AS DATE) >= DATEADD(day, -?, CAST(GETDATE() AS DATE))
-                        GROUP BY CAST(w.last_shown AS DATE)
-                        ORDER BY study_date DESC \
+                          AND (w.last_shown IS NOT NULL OR w.created_at IS NOT NULL)
+                          AND (COALESCE(w.last_shown, w.created_at) >= DATEADD(day, -?, GETDATE())
+                            OR w.times_correct > 0 OR w.times_wrong > 0)
+                        GROUP BY CAST(COALESCE(w.last_shown, w.created_at) AS DATE)
+                        ORDER BY study_date \
                         """
                 self.cursor.execute(query, (days,))
 
             results = self.cursor.fetchall()
-            return sorted(results, key=lambda x: x[0]) if results else []
+
+            # Фільтруємо None значення і переконуємося, що дати коректні
+            filtered_results = []
+            for row in results:
+                if row[0] is not None and row[1] is not None and row[2] is not None:
+                    filtered_results.append(row)
+
+            return filtered_results if filtered_results else []
+
         except Exception as e:
             print(f"Помилка в get_daily_statistics: {e}")
+            import traceback
+            traceback.print_exc()
             return []
 
     def get_words_added_by_date(self, start_date=None, end_date=None):

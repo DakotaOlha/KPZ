@@ -18,14 +18,19 @@ class MainApp(ctk.CTk):
         if not self.db.connect():
             self.destroy()
             return
+
         ctk.set_appearance_mode("dark")
         ctk.set_default_color_theme("blue")
         self.title("Learn Easy - Вивчення слів")
-        self.geometry("1200x750")
+
         self.popup_enabled = False
         self.popup_interval = 300
         self.popup_thread = None
+
         self.create_widgets()
+
+        self.after(50, lambda: self.state('zoomed'))
+
         self.protocol("WM_DELETE_WINDOW", self.on_closing)
 
     def create_widgets(self):
@@ -187,9 +192,10 @@ class MainApp(ctk.CTk):
         FlashcardWindow(self, self.db)
 
     def show_statistics(self):
+        self.clear_main_container()
         self.highlight_menu_button(3)
         from windows.statistics_window import StatisticsWindow
-        StatisticsWindow(self, self.db)
+        StatisticsWindow(self.main_container, self.db)
 
     def show_words(self):
         self.clear_main_container()

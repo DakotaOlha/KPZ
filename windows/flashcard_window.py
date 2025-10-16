@@ -1,6 +1,7 @@
 import customtkinter as ctk
 from tkinter import messagebox
 
+
 class FlashcardWindow(ctk.CTkToplevel):
     def __init__(self, parent, db_manager, category_id=None):
         super().__init__(parent)
@@ -13,10 +14,29 @@ class FlashcardWindow(ctk.CTkToplevel):
         self.correct_count = 0
         self.title("Learn Easy - Картки")
         self.geometry("800x600")
+
+        # Оновлюємо геометрію перед центруванням
         self.update_idletasks()
-        x = (self.winfo_screenwidth() // 2) - (800 // 2)
-        y = (self.winfo_screenheight() // 2) - (600 // 2)
-        self.geometry(f"800x600+{x}+{y}")
+
+        # Центрування вікна
+        screen_width = self.winfo_screenwidth()
+        screen_height = self.winfo_screenheight()
+        window_width = 800
+        window_height = 600
+
+        x = (screen_width - window_width) // 2
+        y = (screen_height - window_height) // 2
+
+        self.geometry(f"{window_width}x{window_height}+{x}+{y}")
+
+        # Робимо вікно завжди поверх інших
+        self.attributes('-topmost', True)
+        self.lift()
+        self.focus_force()
+
+        # Після появи прибираємо topmost, щоб не заважало іншим вікнам
+        self.after(100, lambda: self.attributes('-topmost', False))
+
         self.session_id = self.db.start_session('flashcard')
         self.create_widgets()
         self.load_next_word()

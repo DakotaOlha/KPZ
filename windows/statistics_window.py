@@ -6,20 +6,10 @@ from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
 from matplotlib.figure import Figure
 
 
-class StatisticsWindow(ctk.CTkToplevel):
-    def __init__(self, parent, db_manager):
-        super().__init__(parent)
+class StatisticsWindow:
+    def __init__(self, parent_container, db_manager):
+        self.parent_container = parent_container
         self.db = db_manager
-        self.title("Learn Easy - Статистика")
-        self.geometry("1400x900")
-        self.resizable(True, True)
-
-        self.update_idletasks()
-        x = (self.winfo_screenwidth() // 2) - (1400 // 2)
-        y = (self.winfo_screenheight() // 2) - (900 // 2)
-        self.geometry(f"1400x900+{x}+{y}")
-
-        self.transient(parent)
 
         # Дефолтні дати
         self.end_date = datetime.now()
@@ -29,7 +19,7 @@ class StatisticsWindow(ctk.CTkToplevel):
 
     def create_widgets(self):
         # Верхня панель з контролями
-        top_panel = ctk.CTkFrame(self, fg_color="#1E293B", corner_radius=10)
+        top_panel = ctk.CTkFrame(self.parent_container, fg_color="#1E293B", corner_radius=10)
         top_panel.pack(pady=15, padx=20, fill="x")
 
         title = ctk.CTkLabel(
@@ -63,7 +53,7 @@ class StatisticsWindow(ctk.CTkToplevel):
             ).pack(side="left", padx=5)
 
         # Основний контент з вкладками
-        self.notebook = ctk.CTkFrame(self, fg_color="transparent")
+        self.notebook = ctk.CTkFrame(self.parent_container, fg_color="transparent")
         self.notebook.pack(fill="both", expand=True, padx=20, pady=15)
 
         # Кнопки для перемикання вкладок
@@ -252,7 +242,7 @@ class StatisticsWindow(ctk.CTkToplevel):
         try:
             daily_stats = self.db.get_daily_statistics(days=30)
 
-            if not daily_stats or len(daily_stats) == 0:
+            if not daily_stats:
                 ctk.CTkLabel(
                     parent,
                     text="🔄 Недостатньо даних для графіку. Почніть вивчати слова!",
@@ -268,56 +258,79 @@ class StatisticsWindow(ctk.CTkToplevel):
             for row in daily_stats:
                 try:
                     date_obj = row[0]
-                    if date_obj:
-                        if hasattr(date_obj, 'strftime'):
-                            dates.append(date_obj.strftime("%d.%m"))
-                        else:
-                            dates.append(str(date_obj))
-                    else:
-                        dates.append("N/A")
-                    correct.append(row[1] if row[1] else 0)
-                    total.append(row[2] if row[2] else 0)
+                    # Конвертуємо дату у правильний формат
+                    if isinstance(date_obj, str):
+                        date_obj = datetime.strptime(date_obj, "%Y-%m-%d")
+
+                    # Форматуємо дату для відображення
+                    dates.append(date_obj.strftime("%d.%m"))
+
+                    # Отримуємо значення
+                    correct_count = row[1] if row[1] is not None else 0
+                    total_count = row[2] if row[2] is not None else 0
+
+                    correct.append(correct_count)
+                    total.append(total_count)
+
                 except Exception as e:
-                    print(f"Помилка при обробці рядка: {e}")
+                    print(f"Помилка при обробці рядка {row}: {e}")
                     continue
 
             if not dates:
                 ctk.CTkLabel(
                     parent,
-                    text="🔄 Немає даних для графіку",
+                    text="🔄 Немає коректних даних для графіку",
                     font=ctk.CTkFont(size=14),
                     text_color="#94A3B8"
                 ).pack(pady=50)
                 return
 
+            # Створюємо графік
             fig = Figure(figsize=(12, 6), facecolor="#0F172A", edgecolor="none")
             ax = fig.add_subplot(111, facecolor="#1E293B")
 
             x_pos = range(len(dates))
-            ax.bar([i - 0.2 for i in x_pos], correct, width=0.4, label="Правильно", color="#10B981", alpha=0.8)
-            ax.bar([i + 0.2 for i in x_pos], [t - c for t, c in zip(total, correct)], width=0.4, label="Неправильно",
-                   color="#EF4444", alpha=0.8)
+
+            # Переконуємося, що дані коректні
+            incorrect = [total[i] - correct[i] for i in range(len(total))]
+
+            # Малюємо стовпчики
+            ax.bar([i - 0.2 for i in x_pos], correct, width=0.4,
+                   label="Правильно", color="#10B981", alpha=0.8)
+            ax.bar([i + 0.2 for i in x_pos], incorrect, width=0.4,
+                   label="Неправильно", color="#EF4444", alpha=0.8)
 
             ax.set_xlabel("Дата", fontsize=12, color="#E2E8F0")
-            ax.set_ylabel("Кількість", fontsize=12, color="#E2E8F0")
-            ax.set_title("Щоденна статистика вивчання", fontsize=16, weight="bold", color="#E2E8F0", pad=20)
+            ax.set_ylabel("Кількість відповідей", fontsize=12, color="#E2E8F0")
+            ax.set_title("Щоденна статистика вивчання", fontsize=16,
+                         weight="bold", color="#E2E8F0", pad=20)
             ax.set_xticks(x_pos)
             ax.set_xticklabels(dates, rotation=45, ha="right", color="#94A3B8")
             ax.tick_params(colors="#94A3B8")
             ax.grid(axis="y", alpha=0.2, color="#475569")
-            ax.legend(facecolor="#1E293B", edgecolor="#334155", labelcolor="#E2E8F0")
+            ax.legend(facecolor="#1E293B", edgecolor="#334155",
+                      labelcolor="#E2E8F0", loc='upper left')
 
+            # Стилізуємо рамку
             for spine in ax.spines.values():
                 spine.set_color("#334155")
 
+            # Додаємо сітку
+            ax.grid(True, alpha=0.3, linestyle='--', color="#475569")
+
+            # Упаковуємо canvas
             canvas = FigureCanvasTkAgg(fig, master=parent)
             canvas.draw()
             canvas.get_tk_widget().pack(fill="both", expand=True, padx=20, pady=20)
+
         except Exception as e:
             print(f"Помилка при створенні графіку: {e}")
+            import traceback
+            traceback.print_exc()
+
             ctk.CTkLabel(
                 parent,
-                text="Помилка при завантаженні графіку",
+                text=f"Помилка при завантаженні графіку: {str(e)}",
                 font=ctk.CTkFont(size=14),
                 text_color="#EF4444"
             ).pack(pady=30)
@@ -336,8 +349,24 @@ class StatisticsWindow(ctk.CTkToplevel):
                 ).pack(pady=30)
                 return
 
-            dates = [row[0].strftime("%d.%m") if row[0] else "N/A" for row in daily_stats]
-            correct_percentages = [(row[1] / row[2] * 100) if row[2] > 0 else 0 for row in daily_stats]
+            dates = []
+            correct_percentages = []
+
+            for row in daily_stats:
+                date_obj = row[0]
+                if isinstance(date_obj, str):
+                    try:
+                        date_obj = datetime.strptime(date_obj, "%Y-%m-%d")
+                        dates.append(date_obj.strftime("%d.%m"))
+                    except:
+                        dates.append(str(date_obj)[:10])
+                elif hasattr(date_obj, 'strftime'):
+                    dates.append(date_obj.strftime("%d.%m"))
+                else:
+                    dates.append("N/A")
+
+                percentage = (row[1] / row[2] * 100) if row[2] > 0 else 0
+                correct_percentages.append(percentage)
 
             fig = Figure(figsize=(12, 6), facecolor="#0F172A", edgecolor="none")
             ax = fig.add_subplot(111, facecolor="#1E293B")
