@@ -24,7 +24,8 @@ class DatabaseManager:
             messagebox.showerror("Помилка", f"Не вдалося підключитися до БД:\n{e}")
             return False
 
-    def get_all_words(self, search_term="", category="Всі", sort_by="word", include_archived=False):
+    def get_all_words(self, search_term="", category="Всі", sort_by="word", include_archived=False, start_date=None,
+                      end_date=None):
         query = """
                 SELECT w.id, \
                        w.word, \
@@ -53,6 +54,23 @@ class DatabaseManager:
         if category != "Всі":
             query += " AND c.name = ?"
             params.append(category)
+
+        # Фільтрація за датами додання слова
+        if start_date:
+            query += " AND CAST(w.created_at AS DATE) >= ?"
+            # Конвертуємо datetime.date у рядок у форматі YYYY-MM-DD
+            if hasattr(start_date, 'strftime'):
+                params.append(start_date.strftime("%Y-%m-%d"))
+            else:
+                params.append(str(start_date))
+        if end_date:
+            query += " AND CAST(w.created_at AS DATE) <= ?"
+            # Конвертуємо datetime.date у рядок у форматі YYYY-MM-DD
+            if hasattr(end_date, 'strftime'):
+                params.append(end_date.strftime("%Y-%m-%d"))
+            else:
+                params.append(str(end_date))
+
         sort_mapping = {
             "word": "w.word",
             "translation": "w.translation",
@@ -297,10 +315,16 @@ class DatabaseManager:
 
         if start_date:
             query += " AND CAST(w.last_shown AS DATE) >= ?"
-            params.append(start_date)
+            if hasattr(start_date, 'strftime'):
+                params.append(start_date.strftime("%Y-%m-%d"))
+            else:
+                params.append(str(start_date))
         if end_date:
             query += " AND CAST(w.last_shown AS DATE) <= ?"
-            params.append(end_date)
+            if hasattr(end_date, 'strftime'):
+                params.append(end_date.strftime("%Y-%m-%d"))
+            else:
+                params.append(str(end_date))
 
         query += " GROUP BY CAST(w.last_shown AS DATE) ORDER BY study_date"
 
@@ -429,10 +453,16 @@ class DatabaseManager:
 
         if start_date:
             query += " AND CAST(w.created_at AS DATE) >= ?"
-            params.append(start_date)
+            if hasattr(start_date, 'strftime'):
+                params.append(start_date.strftime("%Y-%m-%d"))
+            else:
+                params.append(str(start_date))
         if end_date:
             query += " AND CAST(w.created_at AS DATE) <= ?"
-            params.append(end_date)
+            if hasattr(end_date, 'strftime'):
+                params.append(end_date.strftime("%Y-%m-%d"))
+            else:
+                params.append(str(end_date))
 
         query += " GROUP BY CAST(w.created_at AS DATE) ORDER BY added_date"
 

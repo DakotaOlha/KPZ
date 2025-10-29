@@ -29,12 +29,16 @@ class StatisticsWindow:
         )
         title.pack(anchor="w", padx=20, pady=(15, 5))
 
-        # Контроль дат
+        # Контроль дат - компактна версія
         controls_frame = ctk.CTkFrame(top_panel, fg_color="transparent")
         controls_frame.pack(fill="x", padx=20, pady=15)
 
+        # Ліва частина - кнопки періодів
+        left_controls = ctk.CTkFrame(controls_frame, fg_color="transparent")
+        left_controls.pack(side="left", fill="x", expand=True)
+
         ctk.CTkLabel(
-            controls_frame,
+            left_controls,
             text="📅 Період:",
             font=ctk.CTkFont(size=14, weight="bold")
         ).pack(side="left", padx=(0, 10))
@@ -42,15 +46,36 @@ class StatisticsWindow:
         # Кнопки для швидкого вибору періоду
         for period, days in [("7 днів", 7), ("14 днів", 14), ("30 днів", 30), ("90 днів", 90)]:
             ctk.CTkButton(
-                controls_frame,
+                left_controls,
                 text=period,
                 command=lambda d=days: self.set_period(d),
-                width=100,
-                height=35,
-                font=ctk.CTkFont(size=12),
+                width=80,
+                height=32,
+                font=ctk.CTkFont(size=11),
                 fg_color="#3B82F6",
                 hover_color="#2563EB"
-            ).pack(side="left", padx=5)
+            ).pack(side="left", padx=2)
+
+        # Права частина - випадаючий календар
+        right_controls = ctk.CTkFrame(controls_frame, fg_color="transparent")
+        right_controls.pack(side="right")
+
+        # Кнопка для перемикання видимості календаря
+        self.calendar_btn = ctk.CTkButton(
+            right_controls,
+            text="📅 Обрати дати",
+            command=self.toggle_calendar,
+            width=120,
+            height=32,
+            font=ctk.CTkFont(size=11),
+            fg_color="#475569",
+            hover_color="#334155"
+        )
+        self.calendar_btn.pack(side="top")
+
+        # Контейнер для календаря (спочатку прихований)
+        self.calendar_container = ctk.CTkFrame(controls_frame, fg_color="transparent")
+        self.calendar_visible = False
 
         # Основний контент з вкладками
         self.notebook = ctk.CTkFrame(self.parent_container, fg_color="transparent")
@@ -62,10 +87,10 @@ class StatisticsWindow:
 
         self.tab_buttons = {}
         tab_titles = [
-            ("📈 Загальна статистика", "overview"),
+            ("📈 Загальна", "overview"),
             ("📚 По категоріям", "categories"),
-            ("📖 Прогрес навчання", "progress"),
-            ("💯 Рівні знань", "knowledge_levels")
+            ("📖 Прогрес", "progress"),
+            ("💯 Рівні", "knowledge_levels")
         ]
 
         for title_text, tab_id in tab_titles:
@@ -73,13 +98,13 @@ class StatisticsWindow:
                 tabs_frame,
                 text=title_text,
                 command=lambda tid=tab_id: self.show_tab(tid),
-                width=150,
-                height=40,
-                font=ctk.CTkFont(size=13, weight="bold"),
+                width=120,
+                height=35,
+                font=ctk.CTkFont(size=12, weight="bold"),
                 fg_color="#334155",
                 hover_color="#475569"
             )
-            btn.pack(side="left", padx=5)
+            btn.pack(side="left", padx=3)
             self.tab_buttons[tab_id] = btn
 
         # Контейнер для вкладок
@@ -88,6 +113,203 @@ class StatisticsWindow:
 
         self.current_tab = None
         self.show_tab("overview")
+
+    def toggle_calendar(self):
+        """Перемикач видимості календаря"""
+        if self.calendar_visible:
+            self.calendar_container.pack_forget()
+            self.calendar_btn.configure(text="📅 Обрати дати", fg_color="#475569")
+        else:
+            self.show_calendar()
+            self.calendar_container.pack(side="bottom", fill="x", pady=(10, 0))
+            self.calendar_btn.configure(text="📅 Приховати", fg_color="#3B82F6")
+
+        self.calendar_visible = not self.calendar_visible
+
+    def show_calendar(self):
+        """Показати календар"""
+        # Очистити контейнер календаря
+        for widget in self.calendar_container.winfo_children():
+            widget.destroy()
+
+        # Фрейм для календаря
+        calendar_frame = ctk.CTkFrame(self.calendar_container, fg_color="#334155", corner_radius=8)
+        calendar_frame.pack(fill="x", padx=10, pady=5)
+
+        # Заголовок календаря
+        ctk.CTkLabel(
+            calendar_frame,
+            text="Оберіть період:",
+            font=ctk.CTkFont(size=13, weight="bold"),
+            text_color="#E2E8F0"
+        ).pack(pady=(10, 5))
+
+        # Фрейм для вибору дат
+        dates_frame = ctk.CTkFrame(calendar_frame, fg_color="transparent")
+        dates_frame.pack(fill="x", padx=15, pady=10)
+
+        # Початкова дата
+        start_frame = ctk.CTkFrame(dates_frame, fg_color="transparent")
+        start_frame.pack(side="left", padx=(0, 20))
+
+        ctk.CTkLabel(
+            start_frame,
+            text="З:",
+            font=ctk.CTkFont(size=12),
+            text_color="#94A3B8"
+        ).pack(anchor="w")
+
+        start_date_frame = ctk.CTkFrame(start_frame, fg_color="transparent")
+        start_date_frame.pack(fill="x", pady=5)
+
+        # Випадаючі списки для початкової дати
+        self.start_day = ctk.CTkComboBox(
+            start_date_frame,
+            values=[str(i).zfill(2) for i in range(1, 32)],
+            width=60,
+            height=30,
+            font=ctk.CTkFont(size=11),
+            dropdown_font=ctk.CTkFont(size=11)
+        )
+        self.start_day.set(self.start_date.strftime("%d"))
+        self.start_day.pack(side="left", padx=2)
+
+        self.start_month = ctk.CTkComboBox(
+            start_date_frame,
+            values=[str(i).zfill(2) for i in range(1, 13)],
+            width=60,
+            height=30,
+            font=ctk.CTkFont(size=11),
+            dropdown_font=ctk.CTkFont(size=11)
+        )
+        self.start_month.set(self.start_date.strftime("%m"))
+        self.start_month.pack(side="left", padx=2)
+
+        self.start_year = ctk.CTkComboBox(
+            start_date_frame,
+            values=[str(i) for i in range(2020, datetime.now().year + 1)],
+            width=70,
+            height=30,
+            font=ctk.CTkFont(size=11),
+            dropdown_font=ctk.CTkFont(size=11)
+        )
+        self.start_year.set(self.start_date.strftime("%Y"))
+        self.start_year.pack(side="left", padx=2)
+
+        # Кінцева дата
+        end_frame = ctk.CTkFrame(dates_frame, fg_color="transparent")
+        end_frame.pack(side="left", padx=(20, 0))
+
+        ctk.CTkLabel(
+            end_frame,
+            text="По:",
+            font=ctk.CTkFont(size=12),
+            text_color="#94A3B8"
+        ).pack(anchor="w")
+
+        end_date_frame = ctk.CTkFrame(end_frame, fg_color="transparent")
+        end_date_frame.pack(fill="x", pady=5)
+
+        # Випадаючі списки для кінцевої дати
+        self.end_day = ctk.CTkComboBox(
+            end_date_frame,
+            values=[str(i).zfill(2) for i in range(1, 32)],
+            width=60,
+            height=30,
+            font=ctk.CTkFont(size=11),
+            dropdown_font=ctk.CTkFont(size=11)
+        )
+        self.end_day.set(self.end_date.strftime("%d"))
+        self.end_day.pack(side="left", padx=2)
+
+        self.end_month = ctk.CTkComboBox(
+            end_date_frame,
+            values=[str(i).zfill(2) for i in range(1, 13)],
+            width=60,
+            height=30,
+            font=ctk.CTkFont(size=11),
+            dropdown_font=ctk.CTkFont(size=11)
+        )
+        self.end_month.set(self.end_date.strftime("%m"))
+        self.end_month.pack(side="left", padx=2)
+
+        self.end_year = ctk.CTkComboBox(
+            end_date_frame,
+            values=[str(i) for i in range(2020, datetime.now().year + 1)],
+            width=70,
+            height=30,
+            font=ctk.CTkFont(size=11),
+            dropdown_font=ctk.CTkFont(size=11)
+        )
+        self.end_year.set(self.end_date.strftime("%Y"))
+        self.end_year.pack(side="left", padx=2)
+
+        # Кнопки календаря
+        calendar_buttons_frame = ctk.CTkFrame(calendar_frame, fg_color="transparent")
+        calendar_buttons_frame.pack(fill="x", padx=15, pady=(5, 10))
+
+        ctk.CTkButton(
+            calendar_buttons_frame,
+            text="Застосувати",
+            command=self.apply_custom_dates,
+            width=100,
+            height=30,
+            font=ctk.CTkFont(size=11),
+            fg_color="#10B981",
+            hover_color="#059669"
+        ).pack(side="left", padx=5)
+
+        ctk.CTkButton(
+            calendar_buttons_frame,
+            text="Сьогодні",
+            command=self.set_today,
+            width=80,
+            height=30,
+            font=ctk.CTkFont(size=11),
+            fg_color="#3B82F6",
+            hover_color="#2563EB"
+        ).pack(side="left", padx=5)
+
+        ctk.CTkButton(
+            calendar_buttons_frame,
+            text="Скасувати",
+            command=self.toggle_calendar,
+            width=80,
+            height=30,
+            font=ctk.CTkFont(size=11),
+            fg_color="#64748B",
+            hover_color="#475569"
+        ).pack(side="left", padx=5)
+
+    def set_today(self):
+        """Встановити сьогоднішню дату"""
+        today = datetime.now()
+        self.end_day.set(today.strftime("%d"))
+        self.end_month.set(today.strftime("%m"))
+        self.end_year.set(today.strftime("%Y"))
+
+    def apply_custom_dates(self):
+        """Застосувати вибрані дати"""
+        try:
+            start_date_str = f"{self.start_year.get()}-{self.start_month.get()}-{self.start_day.get()}"
+            end_date_str = f"{self.end_year.get()}-{self.end_month.get()}-{self.end_day.get()}"
+
+            self.start_date = datetime.strptime(start_date_str, "%Y-%m-%d")
+            self.end_date = datetime.strptime(end_date_str, "%Y-%m-%d")
+
+            if self.start_date > self.end_date:
+                messagebox.showerror("Помилка", "Початкова дата не може бути пізніше кінцевої")
+                return
+
+            # Приховати календар після застосування
+            self.toggle_calendar()
+
+            # Оновити дані
+            if self.current_tab:
+                self.show_tab(self.current_tab)
+
+        except ValueError as e:
+            messagebox.showerror("Помилка", "Невірний формат дати")
 
     def set_period(self, days):
         """Встановити період для графіків"""

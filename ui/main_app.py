@@ -1,14 +1,127 @@
 import customtkinter as ctk
 from tkinter import messagebox
-from datetime import datetime
+from datetime import datetime, timedelta
 import threading
 import time
 import random
+import calendar
+from dateutil.relativedelta import relativedelta
 
 from database import DatabaseManager
 from windows.edit_word_window import EditWordWindow
 from windows.flashcard_window import FlashcardWindow
 from windows.popup_window import PopupWindow
+
+
+class DatePickerFrame(ctk.CTkFrame):
+    """Випадаючий календар для вибору дати"""
+
+    def __init__(self, parent, on_date_selected):
+        super().__init__(parent, fg_color="#1E293B", corner_radius=8)
+        self.on_date_selected = on_date_selected
+        self.current_date = datetime.now()
+        self.build_calendar()
+
+    def build_calendar(self):
+        for widget in self.winfo_children():
+            widget.destroy()
+
+        header = ctk.CTkFrame(self, fg_color="transparent")
+        header.pack(fill="x", padx=5, pady=3)
+
+        ctk.CTkButton(header, text="◀", width=25, command=self.prev_month,
+                      fg_color="#3B82F6", hover_color="#2563EB").pack(side="left")
+
+        self.month_label = ctk.CTkLabel(header, text=self.current_date.strftime("%B %Y"),
+                                        font=ctk.CTkFont(size=14, weight="bold"))
+        self.month_label.pack(side="left", expand=True)
+
+        ctk.CTkButton(header, text="▶", width=25, command=self.next_month,
+                      fg_color="#3B82F6", hover_color="#2563EB").pack(side="right")
+
+        cal_frame = ctk.CTkFrame(self, fg_color="transparent")
+        cal_frame.pack(padx=8, pady=5)
+
+        days = ["Пн", "Вт", "Ср", "Чт", "Пт", "Сб", "Нд"]
+        for i, d in enumerate(days):
+            ctk.CTkLabel(cal_frame, text=d, text_color="#94A3B8",
+                         font=ctk.CTkFont(size=12, weight="bold")).grid(row=0, column=i, padx=2, pady=2)
+
+        month_matrix = calendar.monthcalendar(self.current_date.year, self.current_date.month)
+        for r, week in enumerate(month_matrix, start=1):
+            for c, day in enumerate(week):
+                if day == 0:
+                    continue
+                d_obj = datetime(self.current_date.year, self.current_date.month, day)
+                is_today = d_obj.date() == datetime.now().date()
+                color = "#3B82F6" if is_today else "#334155"
+                ctk.CTkButton(cal_frame, text=str(day), width=25, height=25,
+                              fg_color=color, hover_color="#475569",
+                              command=lambda d=d_obj: self.select_date(d)).grid(row=r, column=c, padx=2, pady=2)
+
+    def select_date(self, date_obj):
+        self.on_date_selected(date_obj)
+
+    def prev_month(self):
+        self.current_date -= relativedelta(months=1)
+        self.build_calendar()
+
+    def next_month(self):
+        self.current_date += relativedelta(months=1)
+        self.build_calendar()
+
+
+class DropdownDatePicker:
+    """Клас для управління випадаючими календарями"""
+
+    def __init__(self, parent, on_date_selected, button_text="📅"):
+        self.parent = parent
+        self.on_date_selected = on_date_selected
+        self.button_text = button_text
+        self.date_picker_frame = None
+        self.is_visible = False
+
+        # Створюємо кнопку для відкриття календаря
+        self.button = ctk.CTkButton(
+            parent,
+            text=button_text,
+            width=40,
+            height=35,
+            command=self.toggle_calendar,
+            fg_color="#3B82F6",
+            hover_color="#2563EB"
+        )
+
+    def toggle_calendar(self):
+        """Перемикає видимість календаря"""
+        if self.is_visible:
+            self.hide_calendar()
+        else:
+            self.show_calendar()
+
+    def show_calendar(self):
+        """Показує календар"""
+        if self.date_picker_frame is None:
+            self.date_picker_frame = DatePickerFrame(self.parent, self._on_date_selected)
+
+        # Відображаємо календар під кнопкою
+        self.date_picker_frame.pack(fill="x", pady=(5, 0))
+        self.is_visible = True
+
+    def hide_calendar(self):
+        """Ховає календар"""
+        if self.date_picker_frame:
+            self.date_picker_frame.pack_forget()
+            self.is_visible = False
+
+    def _on_date_selected(self, date_obj):
+        """Обробник вибору дати"""
+        self.hide_calendar()
+        self.on_date_selected(date_obj)
+
+    def pack(self, **kwargs):
+        """Пакує кнопку календаря"""
+        self.button.pack(**kwargs)
 
 
 class MainApp(ctk.CTk):
@@ -26,6 +139,10 @@ class MainApp(ctk.CTk):
         self.popup_enabled = False
         self.popup_interval = 300
         self.popup_thread = None
+
+        # Фільтри для дат
+        self.date_filter_start = None
+        self.date_filter_end = None
 
         self.create_widgets()
 
@@ -208,16 +325,23 @@ class MainApp(ctk.CTk):
             font=ctk.CTkFont(size=36, weight="bold")
         )
         title.pack(anchor="w", pady=(0, 20))
+
+        # Основні фільтри
         filter_frame = ctk.CTkFrame(container, fg_color="#1E293B", corner_radius=10)
         filter_frame.pack(fill="x", pady=10)
-        search_frame = ctk.CTkFrame(filter_frame, fg_color="transparent")
-        search_frame.pack(side="left", padx=15, pady=15)
+
+        filter_row1 = ctk.CTkFrame(filter_frame, fg_color="transparent")
+        filter_row1.pack(fill="x", padx=15, pady=10)
+
+        search_frame = ctk.CTkFrame(filter_row1, fg_color="transparent")
+        search_frame.pack(side="left", padx=(0, 15))
         ctk.CTkLabel(search_frame, text="🔍 Пошук:").pack(side="left", padx=(0, 10))
         self.search_entry = ctk.CTkEntry(search_frame, width=250, height=35)
         self.search_entry.pack(side="left")
         self.search_entry.bind("<KeyRelease>", lambda e: self.load_words())
-        cat_frame = ctk.CTkFrame(filter_frame, fg_color="transparent")
-        cat_frame.pack(side="left", padx=15, pady=15)
+
+        cat_frame = ctk.CTkFrame(filter_row1, fg_color="transparent")
+        cat_frame.pack(side="left", padx=15)
         ctk.CTkLabel(cat_frame, text="📁 Категорія:").pack(side="left", padx=(0, 10))
         categories = ["Всі"] + [cat[1] for cat in self.db.get_categories()]
         self.category_var = ctk.StringVar(value="Всі")
@@ -230,8 +354,9 @@ class MainApp(ctk.CTk):
             command=lambda x: self.load_words()
         )
         self.category_menu.pack(side="left")
-        sort_frame = ctk.CTkFrame(filter_frame, fg_color="transparent")
-        sort_frame.pack(side="left", padx=15, pady=15)
+
+        sort_frame = ctk.CTkFrame(filter_row1, fg_color="transparent")
+        sort_frame.pack(side="left", padx=15)
         ctk.CTkLabel(sort_frame, text="↕️ Сортування:").pack(side="left", padx=(0, 10))
         self.sort_var = ctk.StringVar(value="word")
         self.sort_menu = ctk.CTkOptionMenu(
@@ -243,8 +368,9 @@ class MainApp(ctk.CTk):
             command=lambda x: self.load_words()
         )
         self.sort_menu.pack(side="left")
-        group_frame = ctk.CTkFrame(filter_frame, fg_color="transparent")
-        group_frame.pack(side="left", padx=15, pady=15)
+
+        group_frame = ctk.CTkFrame(filter_row1, fg_color="transparent")
+        group_frame.pack(side="left", padx=15)
         ctk.CTkLabel(group_frame, text="📊 Групування:").pack(side="left", padx=(0, 10))
         self.group_var = ctk.StringVar(value="none")
         self.group_menu = ctk.CTkOptionMenu(
@@ -256,8 +382,129 @@ class MainApp(ctk.CTk):
             command=lambda x: self.load_words()
         )
         self.group_menu.pack(side="left")
+
+        # Фільтр за датами - компактна версія
+        filter_row2 = ctk.CTkFrame(filter_frame, fg_color="transparent")
+        filter_row2.pack(fill="x", padx=15, pady=(0, 10))
+
+        ctk.CTkLabel(filter_row2, text="📅 Період додання:").pack(side="left", padx=(0, 10))
+
+        # Кнопки швидкого вибору
+        for period, days in [("Всі", None), ("Сьогодні", 0), ("7 днів", 7), ("30 днів", 30)]:
+            ctk.CTkButton(
+                filter_row2,
+                text=period,
+                width=90,
+                height=35,
+                command=lambda d=days: self.set_date_filter(d),
+                fg_color="#3B82F6",
+                hover_color="#2563EB"
+            ).pack(side="left", padx=5)
+
+        # Полі для відображення вибраних дат
+        self.date_filter_label = ctk.CTkLabel(
+            filter_row2,
+            text="",
+            font=ctk.CTkFont(size=12),
+            text_color="#94A3B8"
+        )
+        self.date_filter_label.pack(side="left", padx=(20, 0))
+
+        # Випадаючі календарі для вибору дат
+        calendar_frame = ctk.CTkFrame(filter_frame, fg_color="transparent")
+        calendar_frame.pack(fill="x", padx=15, pady=10)
+
+        # Календар для початкової дати
+        start_frame = ctk.CTkFrame(calendar_frame, fg_color="transparent")
+        start_frame.pack(side="left", padx=(0, 20))
+        ctk.CTkLabel(start_frame, text="Від:").pack(side="left", padx=(0, 10))
+
+        self.start_date_picker = DropdownDatePicker(
+            start_frame,
+            lambda d: self.on_start_date_selected(d),
+            "📅"
+        )
+        self.start_date_picker.pack(side="left")
+
+        # Календар для кінцевої дати
+        end_frame = ctk.CTkFrame(calendar_frame, fg_color="transparent")
+        end_frame.pack(side="left", padx=(0, 20))
+        ctk.CTkLabel(end_frame, text="До:").pack(side="left", padx=(0, 10))
+
+        self.end_date_picker = DropdownDatePicker(
+            end_frame,
+            lambda d: self.on_end_date_selected(d),
+            "📅"
+        )
+        self.end_date_picker.pack(side="left")
+
+        # Кнопка очищення
+        ctk.CTkButton(
+            calendar_frame,
+            text="✕ Очистити",
+            width=100,
+            height=35,
+            command=self.clear_date_filter,
+            fg_color="#EF4444",
+            hover_color="#DC2626"
+        ).pack(side="left", padx=20)
+
         self.words_scroll_frame = ctk.CTkScrollableFrame(container, fg_color="#1E293B")
         self.words_scroll_frame.pack(fill="both", expand=True, pady=10)
+        self.load_words()
+
+    def set_date_filter(self, days):
+        """Встановити фільтр за кількістю днів"""
+        if days is None:
+            self.date_filter_start = None
+            self.date_filter_end = None
+            self.date_filter_label.configure(text="")
+        else:
+            today = datetime.now().date()
+            self.date_filter_end = today
+            self.date_filter_start = today - timedelta(days=days)
+            self.date_filter_label.configure(
+                text=f"З {self.date_filter_start.strftime('%d.%m.%Y')} по {self.date_filter_end.strftime('%d.%m.%Y')}"
+            )
+        self.load_words()
+
+    def on_start_date_selected(self, date_obj):
+        """Callback для вибору початкової дати"""
+        self.date_filter_start = date_obj.date()
+        self.update_date_filter_label()
+        self.load_words()
+
+    def on_end_date_selected(self, date_obj):
+        """Callback для вибору кінцевої дати"""
+        self.date_filter_end = date_obj.date()
+        self.update_date_filter_label()
+        self.load_words()
+
+    def update_date_filter_label(self):
+        """Оновити текст фільтра за датами"""
+        if self.date_filter_start and self.date_filter_end:
+            self.date_filter_label.configure(
+                text=f"З {self.date_filter_start.strftime('%d.%m.%Y')} по {self.date_filter_end.strftime('%d.%m.%Y')}"
+            )
+        elif self.date_filter_start:
+            self.date_filter_label.configure(
+                text=f"З {self.date_filter_start.strftime('%d.%m.%Y')}"
+            )
+        elif self.date_filter_end:
+            self.date_filter_label.configure(
+                text=f"До {self.date_filter_end.strftime('%d.%m.%Y')}"
+            )
+        else:
+            self.date_filter_label.configure(text="")
+
+    def clear_date_filter(self):
+        """Очистити фільтр за датами"""
+        self.date_filter_start = None
+        self.date_filter_end = None
+        self.date_filter_label.configure(text="")
+        # Ховаємо календарі при очищенні
+        self.start_date_picker.hide_calendar()
+        self.end_date_picker.hide_calendar()
         self.load_words()
 
     def load_words(self):
@@ -269,7 +516,11 @@ class MainApp(ctk.CTk):
         sort = self.sort_var.get() if hasattr(self, 'sort_var') else "word"
         group = self.group_var.get() if hasattr(self, 'group_var') else "none"
 
-        words = self.db.get_all_words(search, category, sort)
+        words = self.db.get_all_words(
+            search, category, sort,
+            start_date=self.date_filter_start,
+            end_date=self.date_filter_end
+        )
 
         if group == "none":
             self.display_words_table(words)
@@ -445,6 +696,7 @@ class MainApp(ctk.CTk):
             width=400,
             height=40
         ).pack(side="left", padx=20)
+
         def add_word():
             word = fields[0].get().strip()
             translation = fields[1].get().strip()
@@ -461,6 +713,7 @@ class MainApp(ctk.CTk):
             messagebox.showinfo("Успіх", f"Слово '{word}' додано!")
             for field in fields:
                 field.delete(0, 'end')
+
         ctk.CTkButton(
             form,
             text="➕ Додати слово",
@@ -544,6 +797,7 @@ class MainApp(ctk.CTk):
         interval_entry = ctk.CTkEntry(interval_frame, width=100)
         interval_entry.insert(0, str(self.popup_interval // 60))
         interval_entry.pack(side="right")
+
         def save_settings():
             try:
                 minutes = int(interval_entry.get())
@@ -563,6 +817,7 @@ class MainApp(ctk.CTk):
                     messagebox.showinfo("Успіх", f"Налаштування збережено!\nНовий інтервал: {minutes} хв.")
             except ValueError:
                 messagebox.showerror("Помилка", "Введіть коректне число!")
+
         ctk.CTkButton(
             popup_frame,
             text="💾 Зберегти",
@@ -607,12 +862,14 @@ class MainApp(ctk.CTk):
                     word_data = self.db.get_next_word_for_learning('popup')
                     if word_data:
                         self.show_popup_window(word_data)
+
         self.popup_thread = threading.Thread(target=show_popup_loop, daemon=True)
         self.popup_thread.start()
 
     def show_popup_window(self, word_data):
         def create_popup():
             PopupWindow(self, word_data, self.db)
+
         self.after(0, create_popup)
 
     def on_closing(self):
