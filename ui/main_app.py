@@ -7,6 +7,7 @@ import random
 import calendar
 from dateutil.relativedelta import relativedelta
 
+from DataExporter import DataExporter
 from database import DatabaseManager
 from windows.edit_word_window import EditWordWindow
 from windows.flashcard_window import FlashcardWindow
@@ -14,7 +15,6 @@ from windows.popup_window import PopupWindow
 
 
 class DatePickerFrame(ctk.CTkFrame):
-    """Випадаючий календар для вибору дати"""
 
     def __init__(self, parent, on_date_selected):
         super().__init__(parent, fg_color="#1E293B", corner_radius=8)
@@ -72,7 +72,6 @@ class DatePickerFrame(ctk.CTkFrame):
 
 
 class DropdownDatePicker:
-    """Клас для управління випадаючими календарями"""
 
     def __init__(self, parent, on_date_selected, button_text="📅"):
         self.parent = parent
@@ -93,34 +92,28 @@ class DropdownDatePicker:
         )
 
     def toggle_calendar(self):
-        """Перемикає видимість календаря"""
         if self.is_visible:
             self.hide_calendar()
         else:
             self.show_calendar()
 
     def show_calendar(self):
-        """Показує календар"""
         if self.date_picker_frame is None:
             self.date_picker_frame = DatePickerFrame(self.parent, self._on_date_selected)
 
-        # Відображаємо календар під кнопкою
         self.date_picker_frame.pack(fill="x", pady=(5, 0))
         self.is_visible = True
 
     def hide_calendar(self):
-        """Ховає календар"""
         if self.date_picker_frame:
             self.date_picker_frame.pack_forget()
             self.is_visible = False
 
     def _on_date_selected(self, date_obj):
-        """Обробник вибору дати"""
         self.hide_calendar()
         self.on_date_selected(date_obj)
 
     def pack(self, **kwargs):
-        """Пакує кнопку календаря"""
         self.button.pack(**kwargs)
 
 
@@ -132,6 +125,8 @@ class MainApp(ctk.CTk):
             self.destroy()
             return
 
+        self.exporter = DataExporter(self.db)
+
         ctk.set_appearance_mode("dark")
         ctk.set_default_color_theme("blue")
         self.title("Learn Easy - Вивчення слів")
@@ -140,7 +135,6 @@ class MainApp(ctk.CTk):
         self.popup_interval = 300
         self.popup_thread = None
 
-        # Фільтри для дат
         self.date_filter_start = None
         self.date_filter_end = None
 
@@ -312,7 +306,8 @@ class MainApp(ctk.CTk):
         self.clear_main_container()
         self.highlight_menu_button(3)
         from windows.statistics_window import StatisticsWindow
-        StatisticsWindow(self.main_container, self.db)
+        stats_window = StatisticsWindow(self.main_container, self.db)
+        stats_window.exporter = self.exporter
 
     def show_words(self):
         self.clear_main_container()
@@ -326,7 +321,6 @@ class MainApp(ctk.CTk):
         )
         title.pack(anchor="w", pady=(0, 20))
 
-        # Основні фільтри
         filter_frame = ctk.CTkFrame(container, fg_color="#1E293B", corner_radius=10)
         filter_frame.pack(fill="x", pady=10)
 
@@ -383,13 +377,11 @@ class MainApp(ctk.CTk):
         )
         self.group_menu.pack(side="left")
 
-        # Фільтр за датами - компактна версія
         filter_row2 = ctk.CTkFrame(filter_frame, fg_color="transparent")
         filter_row2.pack(fill="x", padx=15, pady=(0, 10))
 
         ctk.CTkLabel(filter_row2, text="📅 Період додання:").pack(side="left", padx=(0, 10))
 
-        # Кнопки швидкого вибору
         for period, days in [("Всі", None), ("Сьогодні", 0), ("7 днів", 7), ("30 днів", 30)]:
             ctk.CTkButton(
                 filter_row2,
@@ -401,7 +393,6 @@ class MainApp(ctk.CTk):
                 hover_color="#2563EB"
             ).pack(side="left", padx=5)
 
-        # Полі для відображення вибраних дат
         self.date_filter_label = ctk.CTkLabel(
             filter_row2,
             text="",
@@ -410,11 +401,9 @@ class MainApp(ctk.CTk):
         )
         self.date_filter_label.pack(side="left", padx=(20, 0))
 
-        # Випадаючі календарі для вибору дат
         calendar_frame = ctk.CTkFrame(filter_frame, fg_color="transparent")
         calendar_frame.pack(fill="x", padx=15, pady=10)
 
-        # Календар для початкової дати
         start_frame = ctk.CTkFrame(calendar_frame, fg_color="transparent")
         start_frame.pack(side="left", padx=(0, 20))
         ctk.CTkLabel(start_frame, text="Від:").pack(side="left", padx=(0, 10))
@@ -426,7 +415,6 @@ class MainApp(ctk.CTk):
         )
         self.start_date_picker.pack(side="left")
 
-        # Календар для кінцевої дати
         end_frame = ctk.CTkFrame(calendar_frame, fg_color="transparent")
         end_frame.pack(side="left", padx=(0, 20))
         ctk.CTkLabel(end_frame, text="До:").pack(side="left", padx=(0, 10))
@@ -438,7 +426,6 @@ class MainApp(ctk.CTk):
         )
         self.end_date_picker.pack(side="left")
 
-        # Кнопка очищення
         ctk.CTkButton(
             calendar_frame,
             text="✕ Очистити",
@@ -449,12 +436,34 @@ class MainApp(ctk.CTk):
             hover_color="#DC2626"
         ).pack(side="left", padx=20)
 
+        export_frame = ctk.CTkFrame(calendar_frame, fg_color="transparent")
+        export_frame.pack(side="left", padx=(50, 0))
+
+        ctk.CTkButton(
+            export_frame,
+            text="📄 Word",
+            width=80,
+            height=35,
+            command=self.exporter.export_to_word,
+            fg_color="#3B82F6",
+            hover_color="#2563EB"
+        ).pack(side="left", padx=5)
+
+        ctk.CTkButton(
+            export_frame,
+            text="📊 Excel",
+            width=80,
+            height=35,
+            command=self.exporter.export_to_excel,
+            fg_color="#10B981",
+            hover_color="#059669"
+        ).pack(side="left", padx=5)
+
         self.words_scroll_frame = ctk.CTkScrollableFrame(container, fg_color="#1E293B")
         self.words_scroll_frame.pack(fill="both", expand=True, pady=10)
         self.load_words()
 
     def set_date_filter(self, days):
-        """Встановити фільтр за кількістю днів"""
         if days is None:
             self.date_filter_start = None
             self.date_filter_end = None
@@ -469,19 +478,16 @@ class MainApp(ctk.CTk):
         self.load_words()
 
     def on_start_date_selected(self, date_obj):
-        """Callback для вибору початкової дати"""
         self.date_filter_start = date_obj.date()
         self.update_date_filter_label()
         self.load_words()
 
     def on_end_date_selected(self, date_obj):
-        """Callback для вибору кінцевої дати"""
         self.date_filter_end = date_obj.date()
         self.update_date_filter_label()
         self.load_words()
 
     def update_date_filter_label(self):
-        """Оновити текст фільтра за датами"""
         if self.date_filter_start and self.date_filter_end:
             self.date_filter_label.configure(
                 text=f"З {self.date_filter_start.strftime('%d.%m.%Y')} по {self.date_filter_end.strftime('%d.%m.%Y')}"
@@ -498,11 +504,9 @@ class MainApp(ctk.CTk):
             self.date_filter_label.configure(text="")
 
     def clear_date_filter(self):
-        """Очистити фільтр за датами"""
         self.date_filter_start = None
         self.date_filter_end = None
         self.date_filter_label.configure(text="")
-        # Ховаємо календарі при очищенні
         self.start_date_picker.hide_calendar()
         self.end_date_picker.hide_calendar()
         self.load_words()
