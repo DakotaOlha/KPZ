@@ -4,6 +4,8 @@ from docx import Document
 from docx.shared import Pt, RGBColor, Inches
 from openpyxl import Workbook
 from openpyxl.styles import Font, PatternFill, Alignment
+# Додайте цей імпорт, якщо його немає, для вирівнювання
+from docx.enum.text import WD_ALIGN_PARAGRAPH
 
 
 class DataExporter:
@@ -13,7 +15,6 @@ class DataExporter:
 
     def export_to_word(self):
         try:
-
             words = self.db.get_all_words()
 
             if not words:
@@ -22,46 +23,77 @@ class DataExporter:
 
             doc = Document()
 
-            title = doc.add_heading('Звіт - Список слів', 0)
-            title.alignment = 1 #центрування
+            title = doc.add_heading('Звіт - Статистика навчання', 0)
+            title.alignment = WD_ALIGN_PARAGRAPH.CENTER
 
             date_para = doc.add_paragraph()
-            date_para.add_run(f"Дата створення: {datetime.now().strftime('%d.%m.%Y %H:%M')}").italic = True
+            date_run = date_para.add_run(f"Дата створення: {datetime.now().strftime('%d.%m.%Y %H:%M')}")
+            date_run.italic = True
+            date_para.alignment = WD_ALIGN_PARAGRAPH.CENTER
+
+            doc.add_paragraph()
+
+            cat_stats = self.db.get_category_statistics()
+
+            if cat_stats:
+                doc.add_heading('Статистика по категоріям', level=1)
+                table = doc.add_table(rows=1, cols=5)
+                table.style = 'Light Grid Accent 1'
+
+                hdr_cells = table.rows[0].cells
+                headers = ['Категорія', 'Всього', 'Вивчено', 'Вивчається', 'Нові']
+                for i, header in enumerate(headers):
+                    hdr_cells[i].text = header
+                    for paragraph in hdr_cells[i].paragraphs:
+                        for run in paragraph.runs:
+                            run.font.bold = True
+                            run.font.size = Pt(12)
+
+                for cat in cat_stats:
+                    row_cells = table.add_row().cells
+                    row_cells[0].text = cat[0] or "Без категорії"
+                    row_cells[1].text = str(cat[1])
+                    row_cells[2].text = str(cat[2] or 0)
+                    row_cells[3].text = str(cat[3] or 0)
+                    row_cells[4].text = str(cat[4] or 0)
+            else:
+                doc.add_paragraph("Немає даних по категоріях для відображення.")
+
+            section = doc.sections[0]
+            footer = section.footer
+
+            footer_para = footer.paragraphs[0]
+            footer_para.alignment = WD_ALIGN_PARAGRAPH.CENTER
+
+            LOGO_PATH = 'logo.png'
+
+            try:
+                run_logo = footer_para.add_run()
+                run_logo.add_picture(LOGO_PATH, height=Inches(0.3))
+                footer_para.add_run("   ")
+            except FileNotFoundError:
+                print(f"Warning: Logo file not found at '{LOGO_PATH}'. Skipping logo.")
+            except Exception as e:
+                print(f"Warning: Could not add logo. Error: {e}")
 
             stats = self.db.get_statistics()
-            doc.add_paragraph(f"Всього слів: {stats['total_words']}")
-            doc.add_paragraph(f"Вивчено: {stats['learned_words']}")
-            doc.add_paragraph(f"Вивчається: {stats['learning_words']}")
-            doc.add_paragraph(f"Нові: {stats['new_words']}")
+            stats_text = (
+                f"Загальна статистика: "
+                f"Всього слів: {stats['total_words']} | "
+                f"Вивчено: {stats['learned_words']} | "
+                f"Вивчається: {stats['learning_words']} | "
+                f"Нові: {stats['new_words']} | "
+                f"Прогрес: {stats['progress_percentage']:.1f}%"
+            )
 
-            doc.add_paragraph() #порожній
-
-            table = doc.add_table(rows=1, cols=7)
-            table.style = 'Light Grid Accent 1'
-
-            hdr_cells = table.rows[0].cells
-            headers = ['№', 'Слово', 'Переклад', 'Рівень', 'Категорія', 'Показів', 'Правильно']
-            for i, header in enumerate(headers):
-                hdr_cells[i].text = header
-                for paragraph in hdr_cells[i].paragraphs:
-                    for run in paragraph.runs:
-                        run.font.bold = True
-                        run.font.size = Pt(12)
-
-            for idx, word in enumerate(words, 1):
-                row_cells = table.add_row().cells
-                row_cells[0].text = str(idx)
-                row_cells[1].text = word[1]
-                row_cells[2].text = word[2]
-                row_cells[3].text = str(word[4])
-                row_cells[4].text = word[5] or "-"
-                row_cells[5].text = str(word[6])
-                row_cells[6].text = str(word[7])
+            run_stats = footer_para.add_run(stats_text)
+            run_stats.font.size = Pt(9)
+            run_stats.font.italic = True
 
             file_path = filedialog.asksaveasfilename(
                 defaultextension=".docx",
                 filetypes=[("Word Documents", "*.docx"), ("All Files", "*.*")],
-                initialfile=f"LearnEasy_Words_{datetime.now().strftime('%Y%m%d_%H%M%S')}.docx"
+                initialfile=f"LearnEasy_Statistics_{datetime.now().strftime('%Y%m%d_%H%M%S')}.docx"
             )
 
             if file_path:
@@ -164,24 +196,20 @@ class DataExporter:
         try:
             doc = Document()
 
-            title = doc.add_heading('Звіт - Статистика вивчання', 0)
-            title.alignment = 1
+            title = doc.add_heading('Звіт - Статистика навчання', 0)
+            title.alignment = WD_ALIGN_PARAGRAPH.CENTER
 
             date_para = doc.add_paragraph()
-            date_para.add_run(f"Дата створення: {datetime.now().strftime('%d.%m.%Y %H:%M')}").italic = True
+            date_run = date_para.add_run(f"Дата створення: {datetime.now().strftime('%d.%m.%Y %H:%M')}")
+            date_run.italic = True
+            date_para.alignment = WD_ALIGN_PARAGRAPH.CENTER
 
-            stats = self.db.get_statistics()
-            doc.add_heading('Загальна статистика', level=1)
-            doc.add_paragraph(f"Всього слів: {stats['total_words']}")
-            doc.add_paragraph(f"Вивчено: {stats['learned_words']}")
-            doc.add_paragraph(f"Вивчається: {stats['learning_words']}")
-            doc.add_paragraph(f"Нові: {stats['new_words']}")
-            doc.add_paragraph(f"Прогрес: {stats['progress_percentage']:.1f}%")
+            doc.add_paragraph()
 
-            doc.add_heading('Статистика по категоріям', level=1)
             cat_stats = self.db.get_category_statistics()
 
             if cat_stats:
+                doc.add_heading('Статистика по категоріям', level=1)
                 table = doc.add_table(rows=1, cols=5)
                 table.style = 'Light Grid Accent 1'
 
@@ -192,6 +220,7 @@ class DataExporter:
                     for paragraph in hdr_cells[i].paragraphs:
                         for run in paragraph.runs:
                             run.font.bold = True
+                            run.font.size = Pt(12)
 
                 for cat in cat_stats:
                     row_cells = table.add_row().cells
@@ -200,6 +229,39 @@ class DataExporter:
                     row_cells[2].text = str(cat[2] or 0)
                     row_cells[3].text = str(cat[3] or 0)
                     row_cells[4].text = str(cat[4] or 0)
+            else:
+                doc.add_paragraph("Немає даних по категоріях для відображення.")
+
+            section = doc.sections[0]
+            footer = section.footer
+
+            footer_para = footer.paragraphs[0]
+            footer_para.alignment = WD_ALIGN_PARAGRAPH.CENTER
+
+            LOGO_PATH = 'logo.png'
+
+            try:
+                run_logo = footer_para.add_run()
+                run_logo.add_picture(LOGO_PATH, height=Inches(0.3))
+                footer_para.add_run("   ")
+            except FileNotFoundError:
+                print(f"Warning: Logo file not found at '{LOGO_PATH}'. Skipping logo.")
+            except Exception as e:
+                print(f"Warning: Could not add logo. Error: {e}")
+
+            stats = self.db.get_statistics()
+            stats_text = (
+                f"Загальна статистика: "
+                f"Всього слів: {stats['total_words']} | "
+                f"Вивчено: {stats['learned_words']} | "
+                f"Вивчається: {stats['learning_words']} | "
+                f"Нові: {stats['new_words']} | "
+                f"Прогрес: {stats['progress_percentage']:.1f}%"
+            )
+
+            run_stats = footer_para.add_run(stats_text)
+            run_stats.font.size = Pt(9)
+            run_stats.font.italic = True
 
             file_path = filedialog.asksaveasfilename(
                 defaultextension=".docx",

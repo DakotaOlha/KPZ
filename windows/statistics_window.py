@@ -11,14 +11,12 @@ class StatisticsWindow:
         self.parent_container = parent_container
         self.db = db_manager
 
-        # Дефолтні дати
         self.end_date = datetime.now()
         self.start_date = self.end_date - timedelta(days=30)
 
         self.create_widgets()
 
     def create_widgets(self):
-        # Верхня панель з контролями
         top_panel = ctk.CTkFrame(self.parent_container, fg_color="#1E293B", corner_radius=10)
         top_panel.pack(pady=15, padx=20, fill="x")
 
@@ -29,11 +27,9 @@ class StatisticsWindow:
         )
         title.pack(anchor="w", padx=20, pady=(15, 5))
 
-        # Контроль дат - компактна версія
         controls_frame = ctk.CTkFrame(top_panel, fg_color="transparent")
         controls_frame.pack(fill="x", padx=20, pady=15)
 
-        # Ліва частина - кнопки періодів
         left_controls = ctk.CTkFrame(controls_frame, fg_color="transparent")
         left_controls.pack(side="left", fill="x", expand=True)
 
@@ -43,7 +39,6 @@ class StatisticsWindow:
             font=ctk.CTkFont(size=14, weight="bold")
         ).pack(side="left", padx=(0, 10))
 
-        # Кнопки для швидкого вибору періоду
         for period, days in [("7 днів", 7), ("14 днів", 14), ("30 днів", 30), ("90 днів", 90)]:
             ctk.CTkButton(
                 left_controls,
@@ -56,11 +51,9 @@ class StatisticsWindow:
                 hover_color="#2563EB"
             ).pack(side="left", padx=2)
 
-        # Права частина - випадаючий календар
         right_controls = ctk.CTkFrame(controls_frame, fg_color="transparent")
         right_controls.pack(side="right")
 
-        # Кнопка для перемикання видимості календаря
         self.calendar_btn = ctk.CTkButton(
             right_controls,
             text="📅 Обрати дати",
@@ -73,15 +66,12 @@ class StatisticsWindow:
         )
         self.calendar_btn.pack(side="top")
 
-        # Контейнер для календаря (спочатку прихований)
         self.calendar_container = ctk.CTkFrame(controls_frame, fg_color="transparent")
         self.calendar_visible = False
 
-        # Основний контент з вкладками
         self.notebook = ctk.CTkFrame(self.parent_container, fg_color="transparent")
         self.notebook.pack(fill="both", expand=True, padx=20, pady=15)
 
-        # Кнопки для перемикання вкладок
         tabs_frame = ctk.CTkFrame(self.notebook, fg_color="transparent")
         tabs_frame.pack(fill="x", pady=(0, 15))
 
@@ -107,7 +97,6 @@ class StatisticsWindow:
             btn.pack(side="left", padx=3)
             self.tab_buttons[tab_id] = btn
 
-        # Контейнер для вкладок
         self.tabs_container = ctk.CTkFrame(self.notebook, fg_color="transparent")
         self.tabs_container.pack(fill="both", expand=True)
 
@@ -115,7 +104,6 @@ class StatisticsWindow:
         self.show_tab("overview")
 
     def toggle_calendar(self):
-        """Перемикач видимості календаря"""
         if self.calendar_visible:
             self.calendar_container.pack_forget()
             self.calendar_btn.configure(text="📅 Обрати дати", fg_color="#475569")
@@ -127,16 +115,12 @@ class StatisticsWindow:
         self.calendar_visible = not self.calendar_visible
 
     def show_calendar(self):
-        """Показати календар"""
-        # Очистити контейнер календаря
         for widget in self.calendar_container.winfo_children():
             widget.destroy()
 
-        # Фрейм для календаря
         calendar_frame = ctk.CTkFrame(self.calendar_container, fg_color="#334155", corner_radius=8)
         calendar_frame.pack(fill="x", padx=10, pady=5)
 
-        # Заголовок календаря
         ctk.CTkLabel(
             calendar_frame,
             text="Оберіть період:",
@@ -144,11 +128,9 @@ class StatisticsWindow:
             text_color="#E2E8F0"
         ).pack(pady=(10, 5))
 
-        # Фрейм для вибору дат
         dates_frame = ctk.CTkFrame(calendar_frame, fg_color="transparent")
         dates_frame.pack(fill="x", padx=15, pady=10)
 
-        # Початкова дата
         start_frame = ctk.CTkFrame(dates_frame, fg_color="transparent")
         start_frame.pack(side="left", padx=(0, 20))
 
@@ -162,7 +144,6 @@ class StatisticsWindow:
         start_date_frame = ctk.CTkFrame(start_frame, fg_color="transparent")
         start_date_frame.pack(fill="x", pady=5)
 
-        # Випадаючі списки для початкової дати
         self.start_day = ctk.CTkComboBox(
             start_date_frame,
             values=[str(i).zfill(2) for i in range(1, 32)],
@@ -196,7 +177,6 @@ class StatisticsWindow:
         self.start_year.set(self.start_date.strftime("%Y"))
         self.start_year.pack(side="left", padx=2)
 
-        # Кінцева дата
         end_frame = ctk.CTkFrame(dates_frame, fg_color="transparent")
         end_frame.pack(side="left", padx=(20, 0))
 
@@ -210,7 +190,6 @@ class StatisticsWindow:
         end_date_frame = ctk.CTkFrame(end_frame, fg_color="transparent")
         end_date_frame.pack(fill="x", pady=5)
 
-        # Випадаючі списки для кінцевої дати
         self.end_day = ctk.CTkComboBox(
             end_date_frame,
             values=[str(i).zfill(2) for i in range(1, 32)],
@@ -244,7 +223,6 @@ class StatisticsWindow:
         self.end_year.set(self.end_date.strftime("%Y"))
         self.end_year.pack(side="left", padx=2)
 
-        # Кнопки календаря
         calendar_buttons_frame = ctk.CTkFrame(calendar_frame, fg_color="transparent")
         calendar_buttons_frame.pack(fill="x", padx=15, pady=(5, 10))
 
@@ -282,14 +260,12 @@ class StatisticsWindow:
         ).pack(side="left", padx=5)
 
     def set_today(self):
-        """Встановити сьогоднішню дату"""
         today = datetime.now()
         self.end_day.set(today.strftime("%d"))
         self.end_month.set(today.strftime("%m"))
         self.end_year.set(today.strftime("%Y"))
 
     def apply_custom_dates(self):
-        """Застосувати вибрані дати"""
         try:
             start_date_str = f"{self.start_year.get()}-{self.start_month.get()}-{self.start_day.get()}"
             end_date_str = f"{self.end_year.get()}-{self.end_month.get()}-{self.end_day.get()}"
@@ -301,10 +277,8 @@ class StatisticsWindow:
                 messagebox.showerror("Помилка", "Початкова дата не може бути пізніше кінцевої")
                 return
 
-            # Приховати календар після застосування
             self.toggle_calendar()
 
-            # Оновити дані
             if self.current_tab:
                 self.show_tab(self.current_tab)
 
@@ -312,7 +286,6 @@ class StatisticsWindow:
             messagebox.showerror("Помилка", "Невірний формат дати")
 
     def set_period(self, days):
-        """Встановити період для графіків"""
         self.end_date = datetime.now()
         self.start_date = self.end_date - timedelta(days=days)
 
@@ -320,16 +293,13 @@ class StatisticsWindow:
             self.show_tab(self.current_tab)
 
     def clear_tabs_container(self):
-        """Очистити контейнер вкладок"""
         for widget in self.tabs_container.winfo_children():
             widget.destroy()
 
     def show_tab(self, tab_id):
-        """Показати вкладку"""
         self.current_tab = tab_id
         self.clear_tabs_container()
 
-        # Оновити стан кнопок
         for bid, btn in self.tab_buttons.items():
             if bid == tab_id:
                 btn.configure(fg_color="#3B82F6")
@@ -346,11 +316,9 @@ class StatisticsWindow:
             self.show_knowledge_levels_tab()
 
     def show_overview_tab(self):
-        """Вкладка з загальною статистикою"""
         scroll_frame = ctk.CTkScrollableFrame(self.tabs_container, fg_color="transparent")
         scroll_frame.pack(fill="both", expand=True)
 
-        # Статистичні картки
         stats = self.db.get_statistics()
 
         cards_frame = ctk.CTkFrame(scroll_frame, fg_color="transparent")
@@ -385,11 +353,9 @@ class StatisticsWindow:
 
         cards_frame.grid_columnconfigure((0, 1, 2, 3), weight=1)
 
-        # Графік вивчених слів
         self.create_daily_chart(scroll_frame)
 
     def show_categories_tab(self):
-        """Вкладка зі статистикою по категоріям"""
         scroll_frame = ctk.CTkScrollableFrame(self.tabs_container, fg_color="transparent")
         scroll_frame.pack(fill="both", expand=True, padx=10)
 
@@ -405,7 +371,6 @@ class StatisticsWindow:
             empty_label.pack(pady=50)
             return
 
-        # Таблиця категорій
         header_frame = ctk.CTkFrame(scroll_frame, fg_color="#334155", height=50)
         header_frame.pack(fill="x", pady=(0, 10))
 
@@ -446,21 +411,18 @@ class StatisticsWindow:
             progress_bar.set(progress / 100)
 
     def show_progress_tab(self):
-        """Вкладка з прогресом навчання"""
         scroll_frame = ctk.CTkScrollableFrame(self.tabs_container, fg_color="transparent")
         scroll_frame.pack(fill="both", expand=True)
 
         self.create_progress_chart(scroll_frame)
 
     def show_knowledge_levels_tab(self):
-        """Вкладка з розподілом по рівням знань"""
         scroll_frame = ctk.CTkScrollableFrame(self.tabs_container, fg_color="transparent")
         scroll_frame.pack(fill="both", expand=True)
 
         self.create_knowledge_distribution_chart(scroll_frame)
 
     def create_daily_chart(self, parent):
-        """Створити графік щоденної статистики"""
         try:
             daily_stats = self.db.get_daily_statistics(days=30)
 
@@ -480,14 +442,11 @@ class StatisticsWindow:
             for row in daily_stats:
                 try:
                     date_obj = row[0]
-                    # Конвертуємо дату у правильний формат
                     if isinstance(date_obj, str):
                         date_obj = datetime.strptime(date_obj, "%Y-%m-%d")
 
-                    # Форматуємо дату для відображення
                     dates.append(date_obj.strftime("%d.%m"))
 
-                    # Отримуємо значення
                     correct_count = row[1] if row[1] is not None else 0
                     total_count = row[2] if row[2] is not None else 0
 
@@ -507,16 +466,13 @@ class StatisticsWindow:
                 ).pack(pady=50)
                 return
 
-            # Створюємо графік
             fig = Figure(figsize=(12, 6), facecolor="#0F172A", edgecolor="none")
             ax = fig.add_subplot(111, facecolor="#1E293B")
 
             x_pos = range(len(dates))
 
-            # Переконуємося, що дані коректні
             incorrect = [total[i] - correct[i] for i in range(len(total))]
 
-            # Малюємо стовпчики
             ax.bar([i - 0.2 for i in x_pos], correct, width=0.4,
                    label="Правильно", color="#10B981", alpha=0.8)
             ax.bar([i + 0.2 for i in x_pos], incorrect, width=0.4,
@@ -533,14 +489,11 @@ class StatisticsWindow:
             ax.legend(facecolor="#1E293B", edgecolor="#334155",
                       labelcolor="#E2E8F0", loc='upper left')
 
-            # Стилізуємо рамку
             for spine in ax.spines.values():
                 spine.set_color("#334155")
 
-            # Додаємо сітку
             ax.grid(True, alpha=0.3, linestyle='--', color="#475569")
 
-            # Упаковуємо canvas
             canvas = FigureCanvasTkAgg(fig, master=parent)
             canvas.draw()
             canvas.get_tk_widget().pack(fill="both", expand=True, padx=20, pady=20)
@@ -558,7 +511,6 @@ class StatisticsWindow:
             ).pack(pady=30)
 
     def create_progress_chart(self, parent):
-        """Створити графік прогресу навчання"""
         try:
             daily_stats = self.db.get_daily_statistics(days=30)
 
@@ -624,7 +576,6 @@ class StatisticsWindow:
             ).pack(pady=30)
 
     def create_knowledge_distribution_chart(self, parent):
-        """Створити графік розподілу слів по рівням знань"""
         try:
             knowledge_stats = self.db.get_knowledge_level_distribution()
 

@@ -479,3 +479,48 @@ class DatabaseManager:
                 """
         self.cursor.execute(query, (days,))
         return self.cursor.fetchall()
+
+    def search_words_smart(self, search_term=""):
+        if not search_term or search_term.strip() == "":
+            return []
+
+        try:
+            query = """
+                    SELECT w.id, \
+                           w.word, \
+                           w.translation, \
+                           w.transcription, \
+                           w.knowledge_level,
+                           c.name  as category, \
+                           w.times_shown, \
+                           w.times_correct, \
+                           w.times_wrong,
+                           w.is_favorite, \
+                           w.difficulty_level, \
+                           w.example_sentence, \
+                           w.example_translation,
+                           w.category_id,
+                           CASE
+                               WHEN w.word LIKE ? THEN 'HIGHLIGHT_STRONG'
+                               WHEN w.translation LIKE ? THEN 'HIGHLIGHT_MEDIUM'
+                               ELSE 'HIGHLIGHT_LIGHT'
+                               END as highlight_type
+                    FROM Words w
+                             LEFT JOIN Categories c ON w.category_id = c.id
+                    WHERE w.is_archived = 0
+                      AND (w.word LIKE ? OR w.translation LIKE ?)
+                    ORDER BY CASE \
+                                 WHEN w.word LIKE ? THEN 1 \
+                                 WHEN w.translation LIKE ? THEN 2 \
+                                 ELSE 3 \
+                                 END, \
+                             w.word
+                    """
+            search_pattern = f'%{search_term}%'
+            self.cursor.execute(query, (search_pattern, search_pattern, search_pattern,
+                                        search_pattern, search_pattern, search_pattern))
+            results = self.cursor.fetchall()
+            return results
+        except Exception as e:
+            print(f"Помилка в search_words_smart: {e}")
+            return self.get_all_words(search_term, "Всі", "word")

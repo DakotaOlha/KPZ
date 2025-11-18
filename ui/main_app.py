@@ -516,33 +516,222 @@ class MainApp(ctk.CTk):
             widget.destroy()
 
         search = self.search_entry.get() if hasattr(self, 'search_entry') else ""
-        category = self.category_var.get() if hasattr(self, 'category_var') else "Всі"
-        sort = self.sort_var.get() if hasattr(self, 'sort_var') else "word"
-        group = self.group_var.get() if hasattr(self, 'group_var') else "none"
 
-        words = self.db.get_all_words(
-            search, category, sort,
-            start_date=self.date_filter_start,
-            end_date=self.date_filter_end
-        )
-
-        if group == "none":
-            self.display_words_table(words)
+        if search and search.strip():
+            words = self.db.search_words_smart(search)
+            self.display_smart_search_results(words, search)
         else:
-            self.display_grouped_words(words, group)
+            category = self.category_var.get() if hasattr(self, 'category_var') else "Всі"
+            sort = self.sort_var.get() if hasattr(self, 'sort_var') else "word"
+            group = self.group_var.get() if hasattr(self, 'group_var') else "none"
+
+            words = self.db.get_all_words(
+                search, category, sort,
+                start_date=self.date_filter_start,
+                end_date=self.date_filter_end
+            )
+
+            print(f"Loaded {len(words)} words from database")
+
+            if not words:
+                no_data_label = ctk.CTkLabel(
+                    self.words_scroll_frame,
+                    text="Слова не знайдені",
+                    font=ctk.CTkFont(size=16),
+                    text_color="#94A3B8"
+                )
+                no_data_label.pack(pady=50)
+                return
+
+            if group == "none":
+                self.display_words_table(words)
+            else:
+                self.display_grouped_words(words, group)
+
+    def display_smart_search_results(self, words, search_term):
+
+        header_label = ctk.CTkLabel(
+            self.words_scroll_frame,
+            text=f"🔍 Результати пошуку за '{search_term}' ({len(words)} слів)",
+            font=ctk.CTkFont(size=18, weight="bold"),
+            text_color="#3B82F6"
+        )
+        header_label.pack(anchor="w", padx=10, pady=10)
+
+        if not words:
+            no_results = ctk.CTkLabel(
+                self.words_scroll_frame,
+                text="Слів не знайдено",
+                font=ctk.CTkFont(size=14),
+                text_color="#94A3B8"
+            )
+            no_results.pack(pady=30)
+            return
+
+        for word in words:
+            self.create_search_result_row(word, search_term)
+
+    def create_search_result_row(self, word, search_term):
+        try:
+            row = ctk.CTkFrame(self.words_scroll_frame, fg_color="#1E293B", height=80)
+            row.pack(fill="x", pady=3, padx=5)
+            row.pack_propagate(False)
+
+            word_id = word[0]
+            word_text = word[1]
+            translation = word[2]
+            knowledge_level = word[4] if len(word) > 4 else 0
+            category = word[5] if len(word) > 5 else "-"
+            times_correct = word[7] if len(word) > 7 else 0
+            times_wrong = word[8] if len(word) > 8 else 0
+            is_favorite = word[9] if len(word) > 9 else False
+            difficulty = word[10] if len(word) > 10 else 1
+            highlight_type = word[14] if len(word) > 14 else 'NO_HIGHLIGHT'
+
+            if knowledge_level >= 5:
+                status = "Вивчено"
+            elif knowledge_level > 0:
+                status = "Вивчається"
+            else:
+                status = "Нове"
+
+            highlight_colors = {
+                'HIGHLIGHT_STRONG': ('#10B981', '🎯'),
+                'HIGHLIGHT_MEDIUM': ('#3B82F6', '✓'),
+                'HIGHLIGHT_LIGHT': ('#F59E0B', '◐'),
+                'NO_HIGHLIGHT': ('#475569', '○')
+            }
+
+            color, icon = highlight_colors.get(highlight_type, ('#475569', '○'))
+
+            highlight_btn = ctk.CTkButton(
+                row,
+                text=icon,
+                width=40,
+                height=40,
+                fg_color=color,
+                hover_color=color,
+                text_color="white",
+                state="disabled"
+            )
+            highlight_btn.pack(side="left", padx=5, pady=10)
+
+            info_frame = ctk.CTkFrame(row, fg_color="transparent")
+            info_frame.pack(side="left", fill="both", expand=True, padx=10)
+
+            word_frame = ctk.CTkFrame(info_frame, fg_color="transparent")
+            word_frame.pack(fill="x", pady=5)
+
+            ctk.CTkLabel(
+                word_frame,
+                text=word_text,
+                font=ctk.CTkFont(size=16, weight="bold"),
+                anchor="w"
+            ).pack(side="left", padx=5)
+
+            ctk.CTkLabel(
+                word_frame,
+                text=f"→ {translation}",
+                font=ctk.CTkFont(size=14),
+                text_color="#94A3B8",
+                anchor="w"
+            ).pack(side="left", padx=10)
+
+            stats_frame = ctk.CTkFrame(info_frame, fg_color="transparent")
+            stats_frame.pack(fill="x", pady=2)
+
+            difficulty_text = ["Легке", "Середнє", "Складне", "Дуже складне", "Експертне"][min(difficulty - 1, 4)]
+
+            stats_text = f"{category} | {status} | {difficulty_text} | ✓{times_correct} ✗{times_wrong}"
+            ctk.CTkLabel(
+                stats_frame,
+                text=stats_text,
+                font=ctk.CTkFont(size=12),
+                text_color="#64748B",
+                anchor="w"
+            ).pack(side="left", padx=5)
+
+            progress_frame = ctk.CTkFrame(info_frame, fg_color="transparent")
+            progress_frame.pack(fill="x", pady=2)
+
+            progress = min(knowledge_level / 10, 1.0)
+            progress_bar = ctk.CTkProgressBar(progress_frame, width=200, height=6)
+            progress_bar.set(progress)
+            progress_bar.pack(side="left", padx=5)
+
+            progress_text = f"{knowledge_level}/10"
+            ctk.CTkLabel(
+                progress_frame,
+                text=progress_text,
+                font=ctk.CTkFont(size=11),
+                text_color="#64748B",
+                width=40
+            ).pack(side="left", padx=5)
+
+            actions_frame = ctk.CTkFrame(row, fg_color="transparent", width=120)
+            actions_frame.pack(side="right", padx=10)
+            actions_frame.pack_propagate(False)
+
+            ctk.CTkButton(
+                actions_frame,
+                text="✏️",
+                width=35,
+                height=35,
+                command=lambda wid=word_id: self.edit_word(wid),
+                fg_color="#3B82F6",
+                hover_color="#2563EB"
+            ).pack(side="left", padx=2)
+
+            ctk.CTkButton(
+                actions_frame,
+                text="⭐" if is_favorite else "☆",
+                width=35,
+                height=35,
+                command=lambda wid=word_id: self.toggle_favorite(wid),
+                fg_color="#FFB800" if is_favorite else "#64748B",
+                hover_color="#FFC814"
+            ).pack(side="left", padx=2)
+
+            ctk.CTkButton(
+                actions_frame,
+                text="🗑️",
+                width=35,
+                height=35,
+                command=lambda wid=word_id: self.delete_word(wid),
+                fg_color="#EF4444",
+                hover_color="#DC2626"
+            ).pack(side="left", padx=2)
+
+        except Exception as e:
+            print(f"Помилка при створенні рядка пошуку: {e}")
+            print(f"Дані слова: {word}")
 
     def display_words_table(self, words):
+        if not words:
+            no_data_label = ctk.CTkLabel(
+                self.words_scroll_frame,
+                text="Немає слів для відображення",
+                font=ctk.CTkFont(size=16),
+                text_color="#94A3B8"
+            )
+            no_data_label.pack(pady=50)
+            return
+
         headers_frame = ctk.CTkFrame(self.words_scroll_frame, fg_color="#334155", height=50)
         headers_frame.pack(fill="x", pady=(0, 5))
+        headers_frame.pack_propagate(False)
+
         headers = ["⭐", "Слово", "Переклад", "Рівень", "Категорія", "Статистика", "Дії"]
         widths = [50, 200, 200, 120, 150, 180, 120]
+
         for header, width in zip(headers, widths):
-            ctk.CTkLabel(
+            label = ctk.CTkLabel(
                 headers_frame,
                 text=header,
                 font=ctk.CTkFont(size=14, weight="bold"),
                 width=width
-            ).pack(side="left", padx=10, pady=10)
+            )
+            label.pack(side="left", padx=10, pady=10)
 
         for word in words:
             self.create_word_row(word)
@@ -581,57 +770,113 @@ class MainApp(ctk.CTk):
             for word in group_items:
                 self.create_word_row(word, parent=inner_frame)
 
-    def create_word_row(self, word, parent=None):
-        if parent is None:
-            parent = self.words_scroll_frame
-
-        row = ctk.CTkFrame(parent, fg_color="#1E293B", height=60)
+    def create_word_row(self, word):
+        row = ctk.CTkFrame(self.words_scroll_frame, fg_color="#1E293B", height=60)
         row.pack(fill="x", pady=2)
+        row.pack_propagate(False)
+
         fav_btn = ctk.CTkButton(
             row,
             text="⭐" if word[9] else "☆",
-            command=lambda: self.toggle_favorite(word[0]),
+            command=lambda wid=word[0]: self.toggle_favorite(wid),
             width=50,
+            height=35,
             fg_color="transparent",
             hover_color="#334155"
         )
         fav_btn.pack(side="left", padx=10)
-        ctk.CTkLabel(row, text=word[1], width=200, anchor="w").pack(side="left", padx=10)
-        ctk.CTkLabel(row, text=word[2], width=200, anchor="w", text_color="#94A3B8").pack(side="left", padx=10)
+
+        word_label = ctk.CTkLabel(
+            row,
+            text=word[1],
+            width=200,
+            anchor="w",
+            font=ctk.CTkFont(size=14)
+        )
+        word_label.pack(side="left", padx=10)
+
+        translation_label = ctk.CTkLabel(
+            row,
+            text=word[2],
+            width=200,
+            anchor="w",
+            text_color="#94A3B8",
+            font=ctk.CTkFont(size=14)
+        )
+        translation_label.pack(side="left", padx=10)
+
         level_frame = ctk.CTkFrame(row, width=120, fg_color="transparent")
         level_frame.pack(side="left", padx=10)
-        progress = min(word[4] / 10, 1.0)
-        bar = ctk.CTkProgressBar(level_frame, width=100)
-        bar.set(progress)
-        bar.pack()
-        cat_color = "#64748B"
-        ctk.CTkLabel(
+        level_frame.pack_propagate(False)
+
+        knowledge_level = word[4] if word[4] is not None else 0
+        progress = min(knowledge_level / 10, 1.0)
+
+        progress_bar = ctk.CTkProgressBar(level_frame, width=100, height=8)
+        progress_bar.set(progress)
+        progress_bar.pack(pady=5)
+
+        level_text = f"{knowledge_level}/10"
+        level_label = ctk.CTkLabel(
+            level_frame,
+            text=level_text,
+            font=ctk.CTkFont(size=12),
+            text_color="#64748B"
+        )
+        level_label.pack()
+
+        category_text = word[5] if word[5] else "-"
+        category_label = ctk.CTkLabel(
             row,
-            text=word[5] or "-",
+            text=category_text,
             width=150,
             anchor="w",
-            text_color=cat_color
-        ).pack(side="left", padx=10)
-        stats_text = f"✓{word[7]} ✗{word[8]} ({word[6]})"
-        ctk.CTkLabel(row, text=stats_text, width=180, anchor="w", text_color="#64748B").pack(side="left", padx=10)
+            text_color="#64748B",
+            font=ctk.CTkFont(size=14)
+        )
+        category_label.pack(side="left", padx=10)
+
+        correct_attempts = word[7] if word[7] is not None else 0
+        wrong_attempts = word[8] if word[8] is not None else 0
+        total_attempts = correct_attempts + wrong_attempts
+        success_rate = (correct_attempts / total_attempts * 100) if total_attempts > 0 else 0
+
+        stats_text = f"✓{correct_attempts} ✗{wrong_attempts} ({success_rate:.0f}%)"
+        stats_label = ctk.CTkLabel(
+            row,
+            text=stats_text,
+            width=180,
+            anchor="w",
+            text_color="#64748B",
+            font=ctk.CTkFont(size=14)
+        )
+        stats_label.pack(side="left", padx=10)
+
         actions_frame = ctk.CTkFrame(row, fg_color="transparent", width=120)
-        actions_frame.pack(side="left", padx=10)
-        ctk.CTkButton(
+        actions_frame.pack(side="right", padx=10)
+        actions_frame.pack_propagate(False)
+
+        edit_btn = ctk.CTkButton(
             actions_frame,
             text="✏️",
             width=35,
-            command=lambda: self.edit_word(word[0]),
+            height=35,
+            command=lambda wid=word[0]: self.edit_word(wid),
             fg_color="#3B82F6",
             hover_color="#2563EB"
-        ).pack(side="left", padx=2)
-        ctk.CTkButton(
+        )
+        edit_btn.pack(side="left", padx=2)
+
+        delete_btn = ctk.CTkButton(
             actions_frame,
             text="🗑️",
             width=35,
-            command=lambda: self.delete_word(word[0]),
+            height=35,
+            command=lambda wid=word[0]: self.delete_word(wid),
             fg_color="#EF4444",
             hover_color="#DC2626"
-        ).pack(side="left", padx=2)
+        )
+        delete_btn.pack(side="left", padx=2)
 
     def edit_word(self, word_id):
         EditWordWindow(self, self.db, word_id, self.load_words)
