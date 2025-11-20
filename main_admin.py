@@ -48,9 +48,14 @@ class LearnEasyWithAdmin(ctk.CTk):
 
     def on_login_success(self, user_data: dict):
         """Обробка успішного входу"""
-        self.deiconify()
-        self.center_window()
+        print("Логін успішний, ініціалізація інтерфейсу...")  # Debug
+
+        self.deiconify()  # Повертаємо головне вікно
         self.create_interface(user_data)
+
+        # Примусове оновлення геометрії
+        self.update()
+        self.center_window()
 
         # Розгортаємо вікно на весь екран
         self.after(100, lambda: self.state('zoomed'))
