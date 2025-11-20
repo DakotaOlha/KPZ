@@ -281,17 +281,35 @@ class QuickLoginDialog(ctk.CTkToplevel):
         username = self.username_entry.get().strip()
         password = self.password_entry.get().strip()
 
-        if not username or not password:
-            messagebox.showwarning("Помилка", "Заповніть всі поля")
+        if not username:
+            messagebox.showwarning("Помилка", "Введіть ім'я користувача")
+            self.username_entry.focus()
             return
 
-        result = self.auth.login(username, password)
+        if not password:
+            messagebox.showwarning("Помилка", "Введіть пароль")
+            self.password_entry.focus()
+            return
 
-        if result['success']:
-            self.result = True
-            self.destroy()
-        else:
-            messagebox.showerror("Помилка", result.get('message', 'Невірні дані'))
+        self.update()  # оновлення GUI перед блокуючим викликом
+
+        try:
+            import socket
+            ip_address = socket.gethostbyname(socket.gethostname())
+        except:
+            ip_address = "127.0.0.1"
+
+        try:
+            result = self.auth.login(username, password, ip_address)
+
+            if result.get('success'):
+                self.result = True
+                self.destroy()
+            else:
+                messagebox.showerror("Помилка", result.get('message', 'Невірні дані'))
+
+        except Exception as e:
+            messagebox.showerror("Помилка", f"Помилка входу: {str(e)}")
 
     def on_cancel(self):
         self.result = False

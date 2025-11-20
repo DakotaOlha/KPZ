@@ -15,33 +15,45 @@ class AuthManager:
 
     def login(self, username: str, password: str, ip_address: str = None) -> Dict:
         try:
-            session_token = self.cursor.var(pyodbc.SQL_VARCHAR)
-
+            # Виклик нової процедури LoginUser
             self.cursor.execute(
-                "EXEC sp_Login ?, ?, ?, ?, ?",
-                (username, password, ip_address, None, session_token)
+                "EXEC LoginUser ?, ?",
+                (username, password)
             )
 
-            result = self.cursor.fetchone()
+            row = self.cursor.fetchone()
 
-            if result:
-                self.current_user = {
-                    'user_id': result[0],
-                    'username': result[1],
-                    'role_name': result[2],
-                    'session_token': result[3]
+            if not row:
+                return {
+                    'success': False,
+                    'message': "Сервер не повернув дані."
                 }
-                self.session_token = result[3]
+
+            success = row[0]
+            message = row[1]
+            role = row[2]
+            user_id = row[3]
+            username_db = row[4]
+            email = row[5]
+
+            if success:
+                self.current_user = {
+                    'user_id': user_id,
+                    'username': username_db,
+                    'email': email,
+                    'role_name': role
+                }
+                self.session_token = None  # Немає токенів у твоїй БД
 
                 return {
                     'success': True,
                     'user': self.current_user,
-                    'message': 'Успішний вхід'
+                    'message': message
                 }
             else:
                 return {
                     'success': False,
-                    'message': 'Помилка входу'
+                    'message': message
                 }
 
         except Exception as e:
