@@ -6,9 +6,21 @@ from database import DatabaseManager
 from auth import AuthManager, UserManager, RoleManager
 from login_window import LoginWindow
 from admin_panel import AdminPanel
+from DataExporter import DataExporter
+
+# Імпортуємо існуючі вікна
+from windows.flashcard_window import FlashcardWindow
+from windows.edit_word_window import EditWordWindow
+from windows.popup_window import PopupWindow
+from windows.statistics_window import StatisticsWindow
+
+from datetime import datetime, timedelta
+import threading
+import time
 
 
-class LearnEasyWithAdmin(ctk.CTk):  
+class LearnEasyWithAuth(ctk.CTk):
+    """Головний клас програми з автентифікацією та розподілом ролей"""
 
     def __init__(self):
         super().__init__()
@@ -24,6 +36,16 @@ class LearnEasyWithAdmin(ctk.CTk):
         self.auth = AuthManager(self.db.conn)
         self.user_manager = UserManager(self.db.conn, self.auth)
         self.role_manager = RoleManager(self.db.conn, self.auth)
+        self.exporter = DataExporter(self.db)
+
+        # Popup система
+        self.popup_enabled = False
+        self.popup_interval = 300  # 5 хвилин
+        self.popup_thread = None
+
+        # Фільтри дат
+        self.date_filter_start = None
+        self.date_filter_end = None
 
         # Налаштування теми
         ctk.set_appearance_mode("dark")
@@ -39,7 +61,7 @@ class LearnEasyWithAdmin(ctk.CTk):
         self.show_login()
 
     def show_login(self):
-        """Показати вікно входу/реєстрації"""
+        """Показати вікно входу"""
         login_window = LoginWindow(
             self.auth,
             self.on_login_success
@@ -48,19 +70,13 @@ class LearnEasyWithAdmin(ctk.CTk):
 
     def on_login_success(self, user_data: dict):
         """Обробка успішного входу"""
-        print("Логін успішний, ініціалізація інтерфейсу...")  # Debug
+        print(f"Успішний вхід: {user_data['username']}, роль: {user_data['role_name']}")
 
-        self.deiconify()  # Повертаємо головне вікно
+        self.deiconify()
         self.create_interface(user_data)
-
-        # Примусове оновлення геометрії
         self.update()
         self.center_window()
-
-        # Розгортаємо вікно на весь екран
         self.after(100, lambda: self.state('zoomed'))
-
-        # Показуємо вітальне повідомлення
         self.show_welcome_message(user_data)
 
     def center_window(self):
@@ -74,11 +90,10 @@ class LearnEasyWithAdmin(ctk.CTk):
 
     def create_interface(self, user_data: dict):
         """Створення головного інтерфейсу"""
-        # Очищаємо вікно
         for widget in self.winfo_children():
             widget.destroy()
 
-        # Бічна панель (Sidebar)
+        # Бічна панель
         self.sidebar = ctk.CTkFrame(self, width=250, corner_radius=0, fg_color="#1E293B")
         self.sidebar.pack(side="left", fill="y")
         self.sidebar.pack_propagate(False)
@@ -131,27 +146,25 @@ class LearnEasyWithAdmin(ctk.CTk):
         self.show_dashboard()
 
     def create_menu(self):
-        """Створення меню залежно від прав користувача"""
-        menu_index = 0
+        """Створення меню залежно від прав"""
+        menu_items = []
 
-        # Основні розділи
+        # Основні розділи для всіх користувачів
         if self.auth.has_permission('words.view'):
-            self.add_menu_button("📊 Дашборд", self.show_dashboard, "#3B82F6")
-            menu_index += 1
-
-        if self.auth.has_permission('words.view'):
-            self.add_menu_button("🃏 Картки", self.show_flashcards, "#8B5CF6")
-            menu_index += 1
-
-        if self.auth.has_permission('words.view'):
-            self.add_menu_button("📖 Мої слова", self.show_words, "#10B981")
-            menu_index += 1
+            menu_items.append(("📊 Дашборд", self.show_dashboard, "#3B82F6"))
+            menu_items.append(("🃏 Картки", self.show_flashcards, "#8B5CF6"))
+            menu_items.append(("📖 Мої слова", self.show_words, "#10B981"))
 
         if self.auth.has_permission('statistics.view'):
-            self.add_menu_button("📈 Статистика", self.show_statistics, "#F59E0B")
-            menu_index += 1
+            menu_items.append(("📈 Статистика", self.show_statistics, "#F59E0B"))
 
-        # Розділ адміністрування
+        if self.auth.has_permission('words.create'):
+            menu_items.append(("➕ Додати слово", self.show_add_word, "#EC4899"))
+
+        if self.auth.has_permission('words.view'):
+            menu_items.append(("⚙️ Налаштування", self.show_settings, "#64748B"))
+
+        # Розділювач для адмін-функцій
         has_admin_permissions = (
                 self.auth.has_permission('users.view') or
                 self.auth.has_permission('system.logs') or
@@ -159,24 +172,27 @@ class LearnEasyWithAdmin(ctk.CTk):
         )
 
         if has_admin_permissions:
+            # Додаємо роздільник
+            separator = ctk.CTkFrame(self.sidebar, height=2, fg_color="#475569")
+            separator.pack(pady=15, padx=15, fill="x")
+
             ctk.CTkLabel(
                 self.sidebar,
                 text="АДМІНІСТРУВАННЯ",
                 font=ctk.CTkFont(size=11, weight="bold"),
                 text_color="#64748B"
-            ).pack(pady=(20, 10), padx=15, anchor="w")
+            ).pack(pady=(5, 10), padx=15, anchor="w")
 
+        # Адмін розділи
         if self.auth.has_permission('users.view'):
-            self.add_menu_button("👥 Користувачі", self.show_admin_panel, "#EC4899")
-            menu_index += 1
+            menu_items.append(("👥 Користувачі", self.show_admin_panel, "#EC4899"))
 
         if self.auth.has_permission('system.logs'):
-            self.add_menu_button("📋 Журнал подій", self.show_audit_log, "#6366F1")
-            menu_index += 1
+            menu_items.append(("📋 Журнал подій", self.show_audit_log, "#6366F1"))
 
-        if self.auth.has_permission('system.settings'):
-            self.add_menu_button("⚙️ Налаштування", self.show_settings, "#64748B")
-            menu_index += 1
+        # Додаємо всі кнопки
+        for text, command, color in menu_items:
+            self.add_menu_button(text, command, color)
 
     def add_menu_button(self, text: str, command, color: str):
         """Додавання кнопки меню"""
@@ -195,7 +211,7 @@ class LearnEasyWithAdmin(ctk.CTk):
         self.menu_buttons.append(btn)
 
     def highlight_menu_button(self, index: int):
-        """Підсвічування активної кнопки меню"""
+        """Підсвічування активної кнопки"""
         for i, btn in enumerate(self.menu_buttons):
             if i == index:
                 btn.configure(fg_color="#334155")
@@ -207,136 +223,486 @@ class LearnEasyWithAdmin(ctk.CTk):
         for widget in self.main_container.winfo_children():
             widget.destroy()
 
+    # ==================== ДАШБОРД ====================
     def show_dashboard(self):
         """Показати дашборд"""
         self.clear_main_container()
         self.highlight_menu_button(0)
 
+        scroll_frame = ctk.CTkScrollableFrame(self.main_container, fg_color="transparent")
+        scroll_frame.pack(fill="both", expand=True, padx=30, pady=20)
+
+        # Заголовок
+        header_frame = ctk.CTkFrame(scroll_frame, fg_color="transparent")
+        header_frame.pack(fill="x", pady=(0, 30))
+
         title = ctk.CTkLabel(
-            self.main_container,
-            text="📊 Дашборд",
+            header_frame,
+            text="Дашборд",
             font=ctk.CTkFont(size=36, weight="bold")
         )
-        title.pack(pady=50)
+        title.pack(side="left")
 
-        try:
-            stats = self.db.get_statistics()
-
-            stats_frame = ctk.CTkFrame(self.main_container, fg_color="transparent")
-            stats_frame.pack(pady=30)
-
-            cards = [
-                ("Всього слів", stats.get('total_words', 0), "#3B82F6"),
-                ("Вивчено", stats.get('learned_words', 0), "#10B981"),
-                ("Вивчається", stats.get('learning_words', 0), "#F59E0B"),
-                ("Нові", stats.get('new_words', 0), "#8B5CF6"),
-            ]
-
-            for i, (title_text, value, color) in enumerate(cards):
-                card = ctk.CTkFrame(stats_frame, fg_color=color, corner_radius=15,
-                                    width=200, height=150)
-                card.grid(row=0, column=i, padx=15, pady=15)
-
-                ctk.CTkLabel(
-                    card,
-                    text=str(value),
-                    font=ctk.CTkFont(size=48, weight="bold"),
-                    text_color="white"
-                ).pack(pady=(30, 5))
-
-                ctk.CTkLabel(
-                    card,
-                    text=title_text,
-                    font=ctk.CTkFont(size=16),
-                    text_color="white"
-                ).pack(pady=(5, 30))
-
-            # Прогрес
-            progress_frame = ctk.CTkFrame(self.main_container, fg_color="#1E293B",
-                                          corner_radius=15)
-            progress_frame.pack(pady=30, padx=50, fill="x")
-
-            progress_percentage = stats.get('progress_percentage', 0)
-
-            ctk.CTkLabel(
-                progress_frame,
-                text=f"Загальний прогрес: {progress_percentage:.1f}%",
-                font=ctk.CTkFont(size=20, weight="bold")
-            ).pack(pady=(20, 10))
-
-            progress_bar = ctk.CTkProgressBar(progress_frame, width=600, height=30)
-            progress_bar.pack(pady=(10, 20))
-            progress_bar.set(progress_percentage / 100)
-
-        except Exception as e:
-            ctk.CTkLabel(
-                self.main_container,
-                text=f"Помилка завантаження даних: {str(e)}",
-                font=ctk.CTkFont(size=14),
-                text_color="#EF4444"
-            ).pack(pady=20)
-
-    def show_flashcards(self):
-        """Показати режим флеш-карток"""
-        self.clear_main_container()
-        self.highlight_menu_button(1)
-
-        try:
-            from windows.flashcard_window import FlashcardWindow
-            FlashcardWindow(self.main_container, self.db)
-        except ImportError:
-            ctk.CTkLabel(
-                self.main_container,
-                text="🃏 Режим флеш-карток\n\nМодуль в розробці",
-                font=ctk.CTkFont(size=24),
-                text_color="#94A3B8"
-            ).pack(pady=100)
-
-    def show_words(self):
-        """Показати список слів"""
-        self.clear_main_container()
-        self.highlight_menu_button(2)
-
-        ctk.CTkLabel(
-            self.main_container,
-            text="📖 Мої слова",
-            font=ctk.CTkFont(size=36, weight="bold")
-        ).pack(pady=50)
-
-        ctk.CTkLabel(
-            self.main_container,
-            text="Список слів буде тут",
+        date_label = ctk.CTkLabel(
+            header_frame,
+            text=datetime.now().strftime("%d %B %Y"),
             font=ctk.CTkFont(size=16),
-            text_color="#94A3B8"
-        ).pack(pady=20)
+            text_color="#64748B"
+        )
+        date_label.pack(side="right")
 
+        # Статистика
+        stats = self.db.get_statistics()
+
+        cards_frame = ctk.CTkFrame(scroll_frame, fg_color="transparent")
+        cards_frame.pack(fill="x", pady=20)
+
+        cards_data = [
+            ("Всього слів", stats['total_words'], "#3B82F6", "📚"),
+            ("Вивчено", stats['learned_words'], "#10B981", "✅"),
+            ("Вивчається", stats['learning_words'], "#F59E0B", "📖"),
+            ("Нові", stats['new_words'], "#8B5CF6", "✨"),
+        ]
+
+        for i, (title_text, value, color, icon) in enumerate(cards_data):
+            card = self.create_stat_card(cards_frame, title_text, value, color, icon)
+            card.grid(row=i // 2, column=i % 2, padx=15, pady=15, sticky="nsew")
+
+        cards_frame.grid_columnconfigure(0, weight=1)
+        cards_frame.grid_columnconfigure(1, weight=1)
+
+        # Прогрес
+        progress_frame = ctk.CTkFrame(scroll_frame, fg_color="#1E293B", corner_radius=15)
+        progress_frame.pack(fill="x", pady=30, padx=10)
+
+        ctk.CTkLabel(
+            progress_frame,
+            text="Загальний прогрес навчання",
+            font=ctk.CTkFont(size=20, weight="bold")
+        ).pack(pady=(30, 15))
+
+        progress = stats['progress_percentage'] / 100
+        progress_bar = ctk.CTkProgressBar(progress_frame, width=500, height=25, corner_radius=12)
+        progress_bar.pack(pady=15)
+        progress_bar.set(progress)
+
+        ctk.CTkLabel(
+            progress_frame,
+            text=f"{stats['progress_percentage']:.1f}% слів вивчено",
+            font=ctk.CTkFont(size=18),
+            text_color="#64748B"
+        ).pack(pady=(5, 30))
+
+        # Швидкі дії
+        actions_frame = ctk.CTkFrame(scroll_frame, fg_color="transparent")
+        actions_frame.pack(fill="x", pady=20)
+
+        ctk.CTkLabel(
+            actions_frame,
+            text="Швидкі дії",
+            font=ctk.CTkFont(size=22, weight="bold")
+        ).pack(anchor="w", pady=(0, 15))
+
+        actions_buttons = ctk.CTkFrame(actions_frame, fg_color="transparent")
+        actions_buttons.pack(fill="x")
+
+        ctk.CTkButton(
+            actions_buttons,
+            text="🃏 Почати навчання",
+            command=self.show_flashcards,
+            height=60,
+            font=ctk.CTkFont(size=18, weight="bold"),
+            fg_color="#8B5CF6",
+            hover_color="#7C3AED"
+        ).pack(side="left", padx=10, fill="x", expand=True)
+
+        if self.auth.has_permission('words.create'):
+            ctk.CTkButton(
+                actions_buttons,
+                text="➕ Додати слова",
+                command=self.show_add_word,
+                height=60,
+                font=ctk.CTkFont(size=18, weight="bold"),
+                fg_color="#F59E0B",
+                hover_color="#D97706"
+            ).pack(side="left", padx=10, fill="x", expand=True)
+
+    def create_stat_card(self, parent, title, value, color, icon):
+        """Створення картки статистики"""
+        card = ctk.CTkFrame(parent, fg_color=color, corner_radius=15, height=150)
+
+        ctk.CTkLabel(
+            card,
+            text=icon,
+            font=ctk.CTkFont(size=40)
+        ).pack(pady=(25, 5))
+
+        ctk.CTkLabel(
+            card,
+            text=str(value),
+            font=ctk.CTkFont(size=48, weight="bold"),
+            text_color="white"
+        ).pack(pady=5)
+
+        ctk.CTkLabel(
+            card,
+            text=title,
+            font=ctk.CTkFont(size=16),
+            text_color="white"
+        ).pack(pady=(5, 25))
+
+        return card
+
+    # ==================== ФЛЕШ-КАРТКИ ====================
+    def show_flashcards(self):
+        """Показати флеш-картки"""
+        self.highlight_menu_button(1)
+        FlashcardWindow(self, self.db)
+
+    # ==================== МОЇ СЛОВА ====================
+    def show_words(self):
+        """Показати список слів (імпорт з ui/main_app.py)"""
+        # Очищаємо контейнер
+        self.clear_main_container()
+
+        # Знаходимо індекс кнопки "Мої слова" у поточному меню
+        # Це потрібно для коректного підсвічування в main_admin,
+        # але MainApp все одно спробує викликати цей метод всередині.
+        current_words_index = 2  # Значення за замовчуванням
+        for i, btn in enumerate(self.menu_buttons):
+            if "Мої слова" in btn.cget("text"):
+                self.highlight_menu_button(i)
+                current_words_index = i
+                break
+
+        # Імпортуємо функціонал з MainApp
+        from ui.main_app import MainApp
+
+        # Створюємо тимчасовий об'єкт
+        # ВАЖЛИВО: Додаємо highlight_menu_button, щоб уникнути помилки AttributeError
+        temp_app = type('TempApp', (), {
+            'db': self.db,
+            'main_container': self.main_container,
+            'exporter': self.exporter,
+            'date_filter_start': self.date_filter_start,
+            'date_filter_end': self.date_filter_end,
+
+            # --- МЕТОДИ ІНТЕРФЕЙСУ ---
+            'clear_main_container': self.clear_main_container,
+            'highlight_menu_button': self.highlight_menu_button,  # <--- ДОДАНО ЦЕЙ РЯДОК
+            'after': self.after,  # Також потрібно для таймерів
+
+            # Додаємо доступ до меню, якщо MainApp захоче його читати
+            'menu_buttons': self.menu_buttons
+        })()
+
+        # Копіюємо необхідні методи
+        try:
+            MainApp.show_words(temp_app)
+        except Exception as e:
+            print(f"Помилка всередині MainApp.show_words: {e}")
+            import traceback
+            traceback.print_exc()
+
+        # Оновлюємо атрибути після виконання
+        if hasattr(temp_app, 'date_filter_start'):
+            self.date_filter_start = temp_app.date_filter_start
+        if hasattr(temp_app, 'date_filter_end'):
+            self.date_filter_end = temp_app.date_filter_end
+
+    # ==================== СТАТИСТИКА ====================
     def show_statistics(self):
         """Показати статистику"""
         self.clear_main_container()
-        self.highlight_menu_button(3)
 
-        try:
-            from windows.statistics_window import StatisticsWindow
-            StatisticsWindow(self.main_container, self.db)
-        except ImportError:
-            ctk.CTkLabel(
-                self.main_container,
-                text="📈 Статистика\n\nМодуль в розробці",
-                font=ctk.CTkFont(size=24),
-                text_color="#94A3B8"
-            ).pack(pady=100)
+        for i, btn in enumerate(self.menu_buttons):
+            if "Статистика" in btn.cget("text"):
+                self.highlight_menu_button(i)
+                break
 
+        stats_window = StatisticsWindow(self.main_container, self.db)
+        stats_window.exporter = self.exporter
+
+    # ==================== ДОДАТИ СЛОВО ====================
+    def show_add_word(self):
+        """Показати форму додавання слова"""
+        self.clear_main_container()
+
+        for i, btn in enumerate(self.menu_buttons):
+            if "Додати слово" in btn.cget("text"):
+                self.highlight_menu_button(i)
+                break
+
+        container = ctk.CTkScrollableFrame(self.main_container, fg_color="transparent")
+        container.pack(fill="both", expand=True, padx=50, pady=30)
+
+        title = ctk.CTkLabel(
+            container,
+            text="Додати нове слово",
+            font=ctk.CTkFont(size=36, weight="bold")
+        )
+        title.pack(pady=(0, 40))
+
+        form = ctk.CTkFrame(container, fg_color="#1E293B", corner_radius=15)
+        form.pack(fill="x", padx=100)
+
+        fields = []
+        self.create_form_field(form, "Слово*:", fields, 0)
+        self.create_form_field(form, "Переклад*:", fields, 1)
+        self.create_form_field(form, "Транскрипція:", fields, 2, "[həˈloʊ]")
+        self.create_form_field(form, "Приклад речення:", fields, 3, "Hello, how are you?")
+        self.create_form_field(form, "Переклад прикладу:", fields, 4, "Привіт, як справи?")
+
+        # Категорія
+        cat_frame = ctk.CTkFrame(form, fg_color="transparent")
+        cat_frame.pack(fill="x", padx=40, pady=15)
+
+        ctk.CTkLabel(
+            cat_frame,
+            text="Категорія*:",
+            font=ctk.CTkFont(size=16, weight="bold"),
+            width=200,
+            anchor="w"
+        ).pack(side="left")
+
+        categories = self.db.get_categories()
+        cat_names = [cat[1] for cat in categories]
+        cat_var = ctk.StringVar(value=cat_names[0] if cat_names else "")
+
+        ctk.CTkOptionMenu(
+            cat_frame,
+            values=cat_names,
+            variable=cat_var,
+            width=400,
+            height=40
+        ).pack(side="left", padx=20)
+
+        # Складність
+        diff_frame = ctk.CTkFrame(form, fg_color="transparent")
+        diff_frame.pack(fill="x", padx=40, pady=15)
+
+        ctk.CTkLabel(
+            diff_frame,
+            text="Складність:",
+            font=ctk.CTkFont(size=16, weight="bold"),
+            width=200,
+            anchor="w"
+        ).pack(side="left")
+
+        diff_var = ctk.StringVar(value="1")
+        ctk.CTkOptionMenu(
+            diff_frame,
+            values=["1 - Легке", "2 - Середнє", "3 - Складне", "4 - Дуже складне", "5 - Експертне"],
+            variable=diff_var,
+            width=400,
+            height=40
+        ).pack(side="left", padx=20)
+
+        def add_word():
+            word = fields[0].get().strip()
+            translation = fields[1].get().strip()
+
+            if not word or not translation:
+                messagebox.showwarning("Помилка", "Заповніть обов'язкові поля!")
+                return
+
+            cat_name = cat_var.get()
+            cat_id = next((cat[0] for cat in categories if cat[1] == cat_name), 1)
+
+            transcription = fields[2].get().strip()
+            example = fields[3].get().strip()
+            example_trans = fields[4].get().strip()
+            difficulty = int(diff_var.get().split()[0])
+
+            self.db.add_word(word, translation, cat_id, transcription, example, example_trans, difficulty)
+
+            # Логування дії
+            self.auth.log_action('CREATE', 'Words', None, None, f"Added word: {word}")
+
+            messagebox.showinfo("Успіх", f"Слово '{word}' додано!")
+
+            for field in fields:
+                field.delete(0, 'end')
+
+        ctk.CTkButton(
+            form,
+            text="➕ Додати слово",
+            command=add_word,
+            width=400,
+            height=55,
+            font=ctk.CTkFont(size=18, weight="bold"),
+            fg_color="#10B981",
+            hover_color="#059669"
+        ).pack(pady=40)
+
+    def create_form_field(self, parent, label_text, fields_list, index, placeholder=""):
+        """Створення поля форми"""
+        field_frame = ctk.CTkFrame(parent, fg_color="transparent")
+        field_frame.pack(fill="x", padx=40, pady=15)
+
+        ctk.CTkLabel(
+            field_frame,
+            text=label_text,
+            font=ctk.CTkFont(size=16, weight="bold"),
+            width=200,
+            anchor="w"
+        ).pack(side="left")
+
+        entry = ctk.CTkEntry(
+            field_frame,
+            width=400,
+            height=40,
+            placeholder_text=placeholder
+        )
+        entry.pack(side="left", padx=20)
+        fields_list.append(entry)
+
+    # ==================== НАЛАШТУВАННЯ ====================
+    def show_settings(self):
+        """Показати налаштування"""
+        self.clear_main_container()
+
+        for i, btn in enumerate(self.menu_buttons):
+            if "Налаштування" in btn.cget("text"):
+                self.highlight_menu_button(i)
+                break
+
+        container = ctk.CTkScrollableFrame(self.main_container, fg_color="transparent")
+        container.pack(fill="both", expand=True, padx=50, pady=30)
+
+        title = ctk.CTkLabel(
+            container,
+            text="Налаштування",
+            font=ctk.CTkFont(size=36, weight="bold")
+        )
+        title.pack(pady=(0, 30))
+
+        # Popup налаштування
+        popup_frame = ctk.CTkFrame(container, fg_color="#1E293B", corner_radius=15)
+        popup_frame.pack(fill="x", pady=15, padx=50)
+
+        ctk.CTkLabel(
+            popup_frame,
+            text="🔔 Спливаючі вікна",
+            font=ctk.CTkFont(size=22, weight="bold")
+        ).pack(anchor="w", padx=30, pady=(20, 10))
+
+        status_text = "🟢 Увімкнено" if self.popup_enabled else "🔴 Вимкнено"
+        status_label = ctk.CTkLabel(
+            popup_frame,
+            text=f"Статус: {status_text}",
+            font=ctk.CTkFont(size=14),
+            text_color="#10B981" if self.popup_enabled else "#EF4444"
+        )
+        status_label.pack(anchor="w", padx=30, pady=5)
+
+        switch_frame = ctk.CTkFrame(popup_frame, fg_color="transparent")
+        switch_frame.pack(fill="x", padx=30, pady=15)
+
+        ctk.CTkLabel(
+            switch_frame,
+            text="Увімкнути спливаючі вікна:",
+            font=ctk.CTkFont(size=16)
+        ).pack(side="left")
+
+        popup_switch = ctk.CTkSwitch(
+            switch_frame,
+            text="",
+            command=self.toggle_popups,
+            onvalue=True,
+            offvalue=False
+        )
+        if self.popup_enabled:
+            popup_switch.select()
+        popup_switch.pack(side="right")
+
+        interval_frame = ctk.CTkFrame(popup_frame, fg_color="transparent")
+        interval_frame.pack(fill="x", padx=30, pady=15)
+
+        ctk.CTkLabel(
+            interval_frame,
+            text="Інтервал (хвилин):",
+            font=ctk.CTkFont(size=16)
+        ).pack(side="left")
+
+        interval_entry = ctk.CTkEntry(interval_frame, width=100)
+        interval_entry.insert(0, str(self.popup_interval // 60))
+        interval_entry.pack(side="right")
+
+        def save_settings():
+            try:
+                minutes = int(interval_entry.get())
+                if minutes < 1:
+                    raise ValueError
+
+                old_interval = self.popup_interval
+                self.popup_interval = minutes * 60
+
+                if self.popup_enabled and old_interval != self.popup_interval:
+                    self.popup_enabled = False
+                    if self.popup_thread and self.popup_thread.is_alive():
+                        self.popup_thread.join(timeout=1.0)
+                    self.popup_enabled = True
+                    self.start_popup_system()
+                    messagebox.showinfo("Успіх",
+                                        f"Налаштування збережено!\nНовий інтервал: {minutes} хв.")
+                else:
+                    messagebox.showinfo("Успіх", f"Налаштування збережено!")
+            except ValueError:
+                messagebox.showerror("Помилка", "Введіть коректне число!")
+
+        ctk.CTkButton(
+            popup_frame,
+            text="💾 Зберегти",
+            command=save_settings,
+            width=200,
+            height=45,
+            fg_color="#3B82F6",
+            hover_color="#2563EB"
+        ).pack(pady=30)
+
+    def toggle_popups(self):
+        """Перемикання popup системи"""
+        self.popup_enabled = not self.popup_enabled
+        if self.popup_enabled:
+            if self.popup_thread is None or not self.popup_thread.is_alive():
+                self.start_popup_system()
+                messagebox.showinfo("Увімкнено", "Спливаючі вікна увімкнено!")
+        else:
+            messagebox.showinfo("Вимкнено", "Спливаючі вікна вимкнено!")
+
+    def start_popup_system(self):
+        """Запуск popup системи"""
+
+        def show_popup_loop():
+            while self.popup_enabled:
+                time.sleep(self.popup_interval)
+                if self.popup_enabled:
+                    word_data = self.db.get_next_word_for_learning('popup')
+                    if word_data:
+                        self.show_popup_window(word_data)
+
+        self.popup_thread = threading.Thread(target=show_popup_loop, daemon=True)
+        self.popup_thread.start()
+
+    def show_popup_window(self, word_data):
+        """Показати popup вікно"""
+
+        def create_popup():
+            PopupWindow(self, word_data, self.db)
+
+        self.after(0, create_popup)
+
+    # ==================== АДМІНІСТРУВАННЯ ====================
     def show_admin_panel(self):
         """Показати панель адміністратора"""
         self.clear_main_container()
 
-        # Знаходимо індекс кнопки "Користувачі"
         for i, btn in enumerate(self.menu_buttons):
             if "Користувачі" in btn.cget("text"):
                 self.highlight_menu_button(i)
                 break
 
-        # Показуємо панель адміністрування
         admin_panel = AdminPanel(
             self.main_container,
             self.auth,
@@ -354,77 +720,114 @@ class LearnEasyWithAdmin(ctk.CTk):
                 self.highlight_menu_button(i)
                 break
 
-        ctk.CTkLabel(
-            self.main_container,
+        container = ctk.CTkFrame(self.main_container, fg_color="transparent")
+        container.pack(fill="both", expand=True, padx=30, pady=20)
+
+        title = ctk.CTkLabel(
+            container,
             text="📋 Журнал подій",
             font=ctk.CTkFont(size=36, weight="bold")
-        ).pack(pady=50)
+        )
+        title.pack(pady=(0, 20))
 
-        # Тут можна додати відображення логів
         try:
             query = """
-                    SELECT TOP 50
-                    action_time, username, \
-                           action_type,
-                           table_name, \
-                           new_value
-                    FROM AuditLog
-                    ORDER BY action_time DESC \
+                    SELECT TOP 100
+                    al.action_time, u.username,
+                           al.action_type,
+                           al.table_name,
+                           al.new_value,
+                           al.ip_address
+                    FROM AuditLog al
+                             LEFT JOIN Users u ON al.user_id = u.id
+                    ORDER BY al.action_time DESC \
                     """
             self.db.cursor.execute(query)
             logs = self.db.cursor.fetchall()
 
             if logs:
-                logs_frame = ctk.CTkScrollableFrame(
-                    self.main_container,
-                    fg_color="#1E293B"
-                )
-                logs_frame.pack(fill="both", expand=True, padx=50, pady=20)
+                # Заголовки
+                headers_frame = ctk.CTkFrame(container, fg_color="#334155", height=50)
+                headers_frame.pack(fill="x", pady=(0, 5))
+                headers_frame.pack_propagate(False)
+
+                headers = ["Час", "Користувач", "Дія", "Таблиця", "Деталі", "IP"]
+                widths = [150, 120, 100, 100, 300, 120]
+
+                for header, width in zip(headers, widths):
+                    ctk.CTkLabel(
+                        headers_frame,
+                        text=header,
+                        font=ctk.CTkFont(size=13, weight="bold"),
+                        width=width
+                    ).pack(side="left", padx=10, pady=10)
+
+                # Логи
+                logs_frame = ctk.CTkScrollableFrame(container, fg_color="#1E293B")
+                logs_frame.pack(fill="both", expand=True, pady=5)
 
                 for log in logs:
-                    log_text = f"{log[0]} | {log[1]} | {log[2]} | {log[3]}"
+                    row = ctk.CTkFrame(logs_frame, fg_color="#1E293B", height=50)
+                    row.pack(fill="x", pady=2)
+                    row.pack_propagate(False)
+
+                    # Форматування часу
+                    time_str = log[0].strftime("%d.%m.%Y %H:%M") if log[0] else "-"
+
+                    ctk.CTkLabel(row, text=time_str, width=150, anchor="w").pack(side="left", padx=10)
+                    ctk.CTkLabel(row, text=log[1] or "-", width=120, anchor="w").pack(side="left", padx=10)
+
+                    # Колір для типу дії
+                    action_colors = {
+                        'CREATE': '#10B981',
+                        'UPDATE': '#F59E0B',
+                        'DELETE': '#EF4444',
+                        'LOGIN': '#3B82F6',
+                        'LOGOUT': '#64748B'
+                    }
+                    action_color = action_colors.get(log[2], '#94A3B8')
+
                     ctk.CTkLabel(
-                        logs_frame,
-                        text=log_text,
-                        font=ctk.CTkFont(size=12),
-                        anchor="w"
-                    ).pack(fill="x", pady=2, padx=10)
+                        row,
+                        text=log[2] or "-",
+                        width=100,
+                        anchor="w",
+                        text_color=action_color
+                    ).pack(side="left", padx=10)
+
+                    ctk.CTkLabel(row, text=log[3] or "-", width=100, anchor="w").pack(side="left", padx=10)
+
+                    # Обрізаємо довгі деталі
+                    details = log[4] or "-"
+                    if len(details) > 40:
+                        details = details[:37] + "..."
+
+                    ctk.CTkLabel(
+                        row,
+                        text=details,
+                        width=300,
+                        anchor="w",
+                        text_color="#94A3B8"
+                    ).pack(side="left", padx=10)
+
+                    ctk.CTkLabel(row, text=log[5] or "-", width=120, anchor="w").pack(side="left", padx=10)
             else:
                 ctk.CTkLabel(
-                    self.main_container,
-                    text="Немає записів",
-                    text_color="#94A3B8"
-                ).pack(pady=20)
+                    container,
+                    text="Немає записів у журналі",
+                    text_color="#94A3B8",
+                    font=ctk.CTkFont(size=14)
+                ).pack(pady=50)
 
         except Exception as e:
             ctk.CTkLabel(
-                self.main_container,
-                text=f"Помилка: {str(e)}",
-                text_color="#EF4444"
-            ).pack(pady=20)
+                container,
+                text=f"Помилка завантаження логів: {str(e)}",
+                text_color="#EF4444",
+                font=ctk.CTkFont(size=14)
+            ).pack(pady=30)
 
-    def show_settings(self):
-        """Показати налаштування"""
-        self.clear_main_container()
-
-        for i, btn in enumerate(self.menu_buttons):
-            if "Налаштування" in btn.cget("text"):
-                self.highlight_menu_button(i)
-                break
-
-        ctk.CTkLabel(
-            self.main_container,
-            text="⚙️ Налаштування системи",
-            font=ctk.CTkFont(size=36, weight="bold")
-        ).pack(pady=50)
-
-        ctk.CTkLabel(
-            self.main_container,
-            text="Розділ в розробці",
-            font=ctk.CTkFont(size=16),
-            text_color="#94A3B8"
-        ).pack(pady=20)
-
+    # ==================== ДОПОМІЖНІ ФУНКЦІЇ ====================
     def show_welcome_message(self, user_data: dict):
         """Показати вітальне повідомлення"""
         permissions = self.auth.get_user_permissions()
@@ -436,7 +839,6 @@ class LearnEasyWithAdmin(ctk.CTk):
 
 Ви успішно увійшли в систему LearnEasy.
 """
-
         messagebox.showinfo("Вхід виконано", welcome_text)
 
     def logout(self):
@@ -444,6 +846,11 @@ class LearnEasyWithAdmin(ctk.CTk):
         if messagebox.askyesno("Вихід", "Ви впевнені що хочете вийти?"):
             # Логуємо вихід
             self.auth.log_action('LOGOUT', 'System', None, None, None)
+
+            # Зупиняємо popup систему
+            self.popup_enabled = False
+            if self.popup_thread and self.popup_thread.is_alive():
+                self.popup_thread.join(timeout=1.0)
 
             # Виконуємо вихід
             self.auth.logout()
@@ -465,6 +872,11 @@ class LearnEasyWithAdmin(ctk.CTk):
                 self.auth.log_action('LOGOUT', 'System', None, None, 'Application closed')
                 self.auth.logout()
 
+            # Зупиняємо popup
+            self.popup_enabled = False
+            if self.popup_thread and self.popup_thread.is_alive():
+                self.popup_thread.join(timeout=1.0)
+
             self.db.close()
             self.destroy()
             sys.exit(0)
@@ -472,7 +884,7 @@ class LearnEasyWithAdmin(ctk.CTk):
 
 def main():
     """Головна функція запуску програми"""
-    app = LearnEasyWithAdmin()
+    app = LearnEasyWithAuth()
     app.protocol("WM_DELETE_WINDOW", app.on_closing)
     app.mainloop()
 
