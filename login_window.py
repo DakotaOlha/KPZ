@@ -173,19 +173,6 @@ class LoginWindow(ctk.CTk):
         )
         self.status_label.pack(pady=(5, 20))
 
-        # Hint
-        hint_frame = ctk.CTkFrame(form_frame, fg_color="#334155", corner_radius=10)
-        hint_frame.pack(fill="x", padx=40, pady=(10, 30))
-
-        hint_label = ctk.CTkLabel(
-            hint_frame,
-            text="💡 SQL Login:\nStudent: learneasy_student / Student123!\nTeacher: learneasy_teacher / Teacher123!\n\nWindows: використовує admin / admin123",
-            font=ctk.CTkFont(size=11),
-            text_color="#94A3B8",
-            justify="left"
-        )
-        hint_label.pack(pady=15, padx=15)
-
     def toggle_credentials_fields(self):
         """Показати/приховати поля SQL логіна"""
         if self.auth_type_var.get() == "windows":

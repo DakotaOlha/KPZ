@@ -333,8 +333,14 @@ class DatabaseManager:
             pass
 
     def close(self):
-        if self.conn:
-            self.conn.close()
+        try:
+            if self.conn and hasattr(self.conn, 'closed') and not self.conn.closed:
+                self.conn.close()
+        except:
+            pass
+        finally:
+            self.conn = None
+            self.cursor = None
 
     def get_words_statistics(self, start_date=None, end_date=None):
         query = """
