@@ -1,5 +1,6 @@
 import pyodbc
 from tkinter import messagebox
+from config import DatabaseConfig
 import random
 from datetime import datetime
 import time
@@ -9,20 +10,51 @@ class DatabaseManager:
     def __init__(self):
         self.conn = None
         self.cursor = None
+        self.connection_string = None
 
-    def connect(self):
+    def connect(self, username: str = None, password: str = None, use_trusted: bool = True):
         try:
-            self.conn = pyodbc.connect(
-                'DRIVER={SQL Server};'
-                'SERVER=localhost\\SQLEXPRESS;'
-                'DATABASE=LearnEasy;'
-                'Trusted_Connection=yes;'
-            )
+            if use_trusted:
+                self.connection_string = DatabaseConfig.ADMIN_CONNECTION_STRING
+            else:
+                self.connection_string = DatabaseConfig.get_connection_string(
+                    username=username,
+                    password=password,
+                    use_trusted=False
+                )
+
+            self.conn = pyodbc.connect(self.connection_string)
             self.cursor = self.conn.cursor()
+
+            print(f"✅ Підключено до БД як: {username if username else 'Windows User'}")
             return True
-        except Exception as e:
-            messagebox.showerror("Помилка", f"Не вдалося підключитися до БД:\n{e}")
+
+        except pyodbc.Error as e:
+            error_msg = str(e)
+
+            if "Login failed" in error_msg:
+                messagebox.showerror(
+                    "Помилка входу",
+                    f"Невірні облікові дані:\n{username}\n\nПеревірте ім'я користувача та пароль."
+                )
+            elif "Cannot open database" in error_msg:
+                messagebox.showerror(
+                    "Помилка БД",
+                    f"Не вдалося відкрити базу даних LearnEasy.\n\nПеревірте права доступу."
+                )
+            else:
+                messagebox.showerror(
+                    "Помилка підключення",
+                    f"Не вдалося підключитися до БД:\n{error_msg}"
+                )
+
             return False
+
+    def reconnect_with_credentials(self, username: str, password: str):
+        if self.conn:
+            self.close()
+
+        return self.connect(username=username, password=password, use_trusted=False)
 
     def get_all_words(self, search_term="", category="Всі", sort_by="word", include_archived=False, start_date=None,
                       end_date=None):

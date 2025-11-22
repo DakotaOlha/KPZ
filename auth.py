@@ -14,32 +14,30 @@ class AuthManager:
         self.session_token: Optional[str] = None
 
     def login(self, username: str, password: str, ip_address: str = None) -> Dict:
-        print(f"--- ПОЧАТОК ВХОДУ: {username} ---")  # Debug
+        print(f"--- ПОЧАТОК ВХОДУ: {username} ---")
         try:
-            # Використовуємо {CALL ...} синтаксис, він надійніший для ODBC
             sql = "{CALL LoginUser (?, ?)}"
             self.cursor.execute(sql, (username, password))
 
-            # ВАЖЛИВО: Пропускаємо повідомлення типу "X rows affected", якщо вони є
-            # поки cursor.description == None, це не дані, а службові повідомлення
             while self.cursor.description is None:
                 if not self.cursor.nextset():
                     break
 
             row = self.cursor.fetchone()
 
-            # ВАЖЛИВО: Якщо процедура записує час входу, треба зафіксувати транзакцію
-            self.conn.commit()
+            if row:
+                print(f"Відповідь від БД: success={row[0]}, message={row[1]}, role={row[2]}")
+            else:
+                print("БД не повернула жодних даних")
 
-            print(f"Дані від БД: {row}")  # Debug - подивимось, що прийшло
+            self.conn.commit()
 
             if not row:
                 return {
                     'success': False,
-                    'message': "Сервер не повернув дані (LoginUser повернув порожній набір)."
+                    'message': "Сервер не повернув дані"
                 }
 
-            # Розпаковка (переконайтеся, що порядок співпадає з вашою SP)
             success = row[0]
             message = row[1]
             role = row[2]
@@ -54,28 +52,30 @@ class AuthManager:
                     'email': email,
                     'role_name': role
                 }
-                self.session_token = None
 
-                print(f"Успішний вхід. Роль: {role}")  # Debug
+                print(f"✅ Успішний вхід. Роль: {role}")
                 return {
                     'success': True,
                     'user': self.current_user,
                     'message': message
                 }
             else:
-                print(f"Невдалий вхід: {message}")  # Debug
+                print(f"❌ Невдалий вхід: {message}")
                 return {
                     'success': False,
                     'message': message
                 }
 
         except Exception as e:
-            print(f"КРИТИЧНА ПОМИЛКА LOGIN: {e}")  # Debug
-            # Якщо транзакція зависла через помилку, відкочуємо її
+            print(f"КРИТИЧНА ПОМИЛКА LOGIN: {e}")
+            import traceback
+            traceback.print_exc()
+
             try:
                 self.conn.rollback()
             except:
                 pass
+
             return {
                 'success': False,
                 'message': f'Помилка системи: {str(e)}'

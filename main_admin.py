@@ -8,7 +8,6 @@ from login_window import LoginWindow
 from admin_panel import AdminPanel
 from DataExporter import DataExporter
 
-# Імпортуємо існуючі вікна
 from windows.flashcard_window import FlashcardWindow
 from windows.edit_word_window import EditWordWindow
 from windows.popup_window import PopupWindow
@@ -20,56 +19,34 @@ import time
 
 
 class LearnEasyWithAuth(ctk.CTk):
-    """Головний клас програми з автентифікацією та розподілом ролей"""
 
     def __init__(self):
         super().__init__()
 
-        # Підключення до бази даних
         self.db = DatabaseManager()
-        if not self.db.connect():
+
+        if not self.db.connect(use_trusted=True):
             messagebox.showerror("Помилка", "Не вдалося підключитися до бази даних")
             self.destroy()
             sys.exit(1)
 
-        # Ініціалізація менеджерів
         self.auth = AuthManager(self.db.conn)
         self.user_manager = UserManager(self.db.conn, self.auth)
         self.role_manager = RoleManager(self.db.conn, self.auth)
-        self.exporter = DataExporter(self.db)
 
-        # Popup система
-        self.popup_enabled = False
-        self.popup_interval = 300  # 5 хвилин
-        self.popup_thread = None
-
-        # Фільтри дат
-        self.date_filter_start = None
-        self.date_filter_end = None
-
-        # Налаштування теми
-        ctk.set_appearance_mode("dark")
-        ctk.set_default_color_theme("blue")
-
-        self.title("Learn Easy - Система управління навчанням")
-        self.geometry("1400x900")
-
-        # Ховаємо головне вікно до входу
         self.withdraw()
 
-        # Показуємо вікно входу
         self.show_login()
 
     def show_login(self):
-        """Показати вікно входу"""
         login_window = LoginWindow(
             self.auth,
-            self.on_login_success
+            self.on_login_success,
+            self.db
         )
         login_window.run()
 
     def on_login_success(self, user_data: dict):
-        """Обробка успішного входу"""
         print(f"Успішний вхід: {user_data['username']}, роль: {user_data['role_name']}")
 
         self.deiconify()
@@ -80,7 +57,6 @@ class LearnEasyWithAuth(ctk.CTk):
         self.show_welcome_message(user_data)
 
     def center_window(self):
-        """Центрування вікна"""
         self.update_idletasks()
         screen_width = self.winfo_screenwidth()
         screen_height = self.winfo_screenheight()
@@ -89,16 +65,13 @@ class LearnEasyWithAuth(ctk.CTk):
         self.geometry(f"1400x900+{x}+{y}")
 
     def create_interface(self, user_data: dict):
-        """Створення головного інтерфейсу"""
         for widget in self.winfo_children():
             widget.destroy()
 
-        # Бічна панель
         self.sidebar = ctk.CTkFrame(self, width=250, corner_radius=0, fg_color="#1E293B")
         self.sidebar.pack(side="left", fill="y")
         self.sidebar.pack_propagate(False)
 
-        # Інформація про користувача
         user_frame = ctk.CTkFrame(self.sidebar, fg_color="#334155", corner_radius=10)
         user_frame.pack(pady=20, padx=15, fill="x")
 
@@ -123,11 +96,9 @@ class LearnEasyWithAuth(ctk.CTk):
         )
         role_label.pack(pady=(5, 15), padx=20)
 
-        # Меню
         self.menu_buttons = []
         self.create_menu()
 
-        # Кнопка виходу
         logout_btn = ctk.CTkButton(
             self.sidebar,
             text="🚪 Вийти",
@@ -138,33 +109,33 @@ class LearnEasyWithAuth(ctk.CTk):
         )
         logout_btn.pack(side="bottom", pady=20, padx=15, fill="x")
 
-        # Головний контейнер
         self.main_container = ctk.CTkFrame(self, fg_color="#0F172A")
         self.main_container.pack(side="right", fill="both", expand=True)
 
-        # Показуємо дашборд за замовчуванням
         self.show_dashboard()
 
     def create_menu(self):
-        """Створення меню залежно від прав"""
         menu_items = []
 
-        # Основні розділи для всіх користувачів
         if self.auth.has_permission('words.view'):
             menu_items.append(("📊 Дашборд", self.show_dashboard, "#3B82F6"))
-            menu_items.append(("🃏 Картки", self.show_flashcards, "#8B5CF6"))
-            menu_items.append(("📖 Мої слова", self.show_words, "#10B981"))
+
+            if not self.auth.has_permission('users.view'):
+                menu_items.append(("🃏 Картки", self.show_flashcards, "#8B5CF6"))
+                menu_items.append(("📖 Мої слова", self.show_words, "#10B981"))
+                menu_items.append(("⚙️ Налаштування", self.show_settings, "#64748B"))
+
 
         if self.auth.has_permission('statistics.view'):
             menu_items.append(("📈 Статистика", self.show_statistics, "#F59E0B"))
 
         if self.auth.has_permission('words.create'):
-            menu_items.append(("➕ Додати слово", self.show_add_word, "#EC4899"))
+            if not self.auth.has_permission('users.view'):
+                menu_items.append(("➕ Додати слово", self.show_add_word, "#EC4899"))
 
-        if self.auth.has_permission('words.view'):
-            menu_items.append(("⚙️ Налаштування", self.show_settings, "#64748B"))
+        #if self.auth.has_permission('words.view'):
+            # menu_items.append(("⚙️ Налаштування", self.show_settings, "#64748B"))
 
-        # Розділювач для адмін-функцій
         has_admin_permissions = (
                 self.auth.has_permission('users.view') or
                 self.auth.has_permission('system.logs') or
@@ -172,7 +143,6 @@ class LearnEasyWithAuth(ctk.CTk):
         )
 
         if has_admin_permissions:
-            # Додаємо роздільник
             separator = ctk.CTkFrame(self.sidebar, height=2, fg_color="#475569")
             separator.pack(pady=15, padx=15, fill="x")
 
@@ -183,19 +153,16 @@ class LearnEasyWithAuth(ctk.CTk):
                 text_color="#64748B"
             ).pack(pady=(5, 10), padx=15, anchor="w")
 
-        # Адмін розділи
         if self.auth.has_permission('users.view'):
             menu_items.append(("👥 Користувачі", self.show_admin_panel, "#EC4899"))
 
         if self.auth.has_permission('system.logs'):
             menu_items.append(("📋 Журнал подій", self.show_audit_log, "#6366F1"))
 
-        # Додаємо всі кнопки
         for text, command, color in menu_items:
             self.add_menu_button(text, command, color)
 
     def add_menu_button(self, text: str, command, color: str):
-        """Додавання кнопки меню"""
         btn = ctk.CTkButton(
             self.sidebar,
             text=text,
@@ -211,7 +178,6 @@ class LearnEasyWithAuth(ctk.CTk):
         self.menu_buttons.append(btn)
 
     def highlight_menu_button(self, index: int):
-        """Підсвічування активної кнопки"""
         for i, btn in enumerate(self.menu_buttons):
             if i == index:
                 btn.configure(fg_color="#334155")
@@ -219,13 +185,10 @@ class LearnEasyWithAuth(ctk.CTk):
                 btn.configure(fg_color="transparent")
 
     def clear_main_container(self):
-        """Очищення головного контейнера"""
         for widget in self.main_container.winfo_children():
             widget.destroy()
 
-    # ==================== ДАШБОРД ====================
     def show_dashboard(self):
-        """Показати дашборд"""
         self.clear_main_container()
         self.highlight_menu_button(0)
 
@@ -328,7 +291,6 @@ class LearnEasyWithAuth(ctk.CTk):
             ).pack(side="left", padx=10, fill="x", expand=True)
 
     def create_stat_card(self, parent, title, value, color, icon):
-        """Створення картки статистики"""
         card = ctk.CTkFrame(parent, fg_color=color, corner_radius=15, height=150)
 
         ctk.CTkLabel(
@@ -353,66 +315,34 @@ class LearnEasyWithAuth(ctk.CTk):
 
         return card
 
-    # ==================== ФЛЕШ-КАРТКИ ====================
     def show_flashcards(self):
-        """Показати флеш-картки"""
         self.highlight_menu_button(1)
         FlashcardWindow(self, self.db)
 
-    # ==================== МОЇ СЛОВА ====================
     def show_words(self):
-        """Показати список слів (імпорт з ui/main_app.py)"""
-        # Очищаємо контейнер
         self.clear_main_container()
 
-        # Знаходимо індекс кнопки "Мої слова" у поточному меню
-        # Це потрібно для коректного підсвічування в main_admin,
-        # але MainApp все одно спробує викликати цей метод всередині.
-        current_words_index = 2  # Значення за замовчуванням
         for i, btn in enumerate(self.menu_buttons):
             if "Мої слова" in btn.cget("text"):
                 self.highlight_menu_button(i)
-                current_words_index = i
                 break
 
-        # Імпортуємо функціонал з MainApp
         from ui.main_app import MainApp
 
-        # Створюємо тимчасовий об'єкт
-        # ВАЖЛИВО: Додаємо highlight_menu_button, щоб уникнути помилки AttributeError
         temp_app = type('TempApp', (), {
             'db': self.db,
             'main_container': self.main_container,
             'exporter': self.exporter,
             'date_filter_start': self.date_filter_start,
             'date_filter_end': self.date_filter_end,
-
-            # --- МЕТОДИ ІНТЕРФЕЙСУ ---
-            'clear_main_container': self.clear_main_container,
-            'highlight_menu_button': self.highlight_menu_button,  # <--- ДОДАНО ЦЕЙ РЯДОК
-            'after': self.after,  # Також потрібно для таймерів
-
-            # Додаємо доступ до меню, якщо MainApp захоче його читати
-            'menu_buttons': self.menu_buttons
         })()
 
-        # Копіюємо необхідні методи
-        try:
-            MainApp.show_words(temp_app)
-        except Exception as e:
-            print(f"Помилка всередині MainApp.show_words: {e}")
-            import traceback
-            traceback.print_exc()
+        MainApp.show_words(temp_app)
 
-        # Оновлюємо атрибути після виконання
-        if hasattr(temp_app, 'date_filter_start'):
-            self.date_filter_start = temp_app.date_filter_start
-        if hasattr(temp_app, 'date_filter_end'):
-            self.date_filter_end = temp_app.date_filter_end
+        self.date_filter_start = temp_app.date_filter_start
+        self.date_filter_end = temp_app.date_filter_end
 
-    # ==================== СТАТИСТИКА ====================
     def show_statistics(self):
-        """Показати статистику"""
         self.clear_main_container()
 
         for i, btn in enumerate(self.menu_buttons):
@@ -423,9 +353,7 @@ class LearnEasyWithAuth(ctk.CTk):
         stats_window = StatisticsWindow(self.main_container, self.db)
         stats_window.exporter = self.exporter
 
-    # ==================== ДОДАТИ СЛОВО ====================
     def show_add_word(self):
-        """Показати форму додавання слова"""
         self.clear_main_container()
 
         for i, btn in enumerate(self.menu_buttons):
@@ -453,7 +381,6 @@ class LearnEasyWithAuth(ctk.CTk):
         self.create_form_field(form, "Приклад речення:", fields, 3, "Hello, how are you?")
         self.create_form_field(form, "Переклад прикладу:", fields, 4, "Привіт, як справи?")
 
-        # Категорія
         cat_frame = ctk.CTkFrame(form, fg_color="transparent")
         cat_frame.pack(fill="x", padx=40, pady=15)
 
@@ -477,7 +404,6 @@ class LearnEasyWithAuth(ctk.CTk):
             height=40
         ).pack(side="left", padx=20)
 
-        # Складність
         diff_frame = ctk.CTkFrame(form, fg_color="transparent")
         diff_frame.pack(fill="x", padx=40, pady=15)
 
@@ -516,7 +442,6 @@ class LearnEasyWithAuth(ctk.CTk):
 
             self.db.add_word(word, translation, cat_id, transcription, example, example_trans, difficulty)
 
-            # Логування дії
             self.auth.log_action('CREATE', 'Words', None, None, f"Added word: {word}")
 
             messagebox.showinfo("Успіх", f"Слово '{word}' додано!")
@@ -536,7 +461,6 @@ class LearnEasyWithAuth(ctk.CTk):
         ).pack(pady=40)
 
     def create_form_field(self, parent, label_text, fields_list, index, placeholder=""):
-        """Створення поля форми"""
         field_frame = ctk.CTkFrame(parent, fg_color="transparent")
         field_frame.pack(fill="x", padx=40, pady=15)
 
@@ -557,9 +481,7 @@ class LearnEasyWithAuth(ctk.CTk):
         entry.pack(side="left", padx=20)
         fields_list.append(entry)
 
-    # ==================== НАЛАШТУВАННЯ ====================
     def show_settings(self):
-        """Показати налаштування"""
         self.clear_main_container()
 
         for i, btn in enumerate(self.menu_buttons):
@@ -577,7 +499,6 @@ class LearnEasyWithAuth(ctk.CTk):
         )
         title.pack(pady=(0, 30))
 
-        # Popup налаштування
         popup_frame = ctk.CTkFrame(container, fg_color="#1E293B", corner_radius=15)
         popup_frame.pack(fill="x", pady=15, padx=50)
 
@@ -662,7 +583,6 @@ class LearnEasyWithAuth(ctk.CTk):
         ).pack(pady=30)
 
     def toggle_popups(self):
-        """Перемикання popup системи"""
         self.popup_enabled = not self.popup_enabled
         if self.popup_enabled:
             if self.popup_thread is None or not self.popup_thread.is_alive():
@@ -672,7 +592,6 @@ class LearnEasyWithAuth(ctk.CTk):
             messagebox.showinfo("Вимкнено", "Спливаючі вікна вимкнено!")
 
     def start_popup_system(self):
-        """Запуск popup системи"""
 
         def show_popup_loop():
             while self.popup_enabled:
@@ -686,16 +605,13 @@ class LearnEasyWithAuth(ctk.CTk):
         self.popup_thread.start()
 
     def show_popup_window(self, word_data):
-        """Показати popup вікно"""
 
         def create_popup():
             PopupWindow(self, word_data, self.db)
 
         self.after(0, create_popup)
 
-    # ==================== АДМІНІСТРУВАННЯ ====================
     def show_admin_panel(self):
-        """Показати панель адміністратора"""
         self.clear_main_container()
 
         for i, btn in enumerate(self.menu_buttons):
@@ -712,7 +628,6 @@ class LearnEasyWithAuth(ctk.CTk):
         admin_panel.pack(fill="both", expand=True)
 
     def show_audit_log(self):
-        """Показати журнал подій"""
         self.clear_main_container()
 
         for i, btn in enumerate(self.menu_buttons):
@@ -746,7 +661,6 @@ class LearnEasyWithAuth(ctk.CTk):
             logs = self.db.cursor.fetchall()
 
             if logs:
-                # Заголовки
                 headers_frame = ctk.CTkFrame(container, fg_color="#334155", height=50)
                 headers_frame.pack(fill="x", pady=(0, 5))
                 headers_frame.pack_propagate(False)
@@ -762,7 +676,6 @@ class LearnEasyWithAuth(ctk.CTk):
                         width=width
                     ).pack(side="left", padx=10, pady=10)
 
-                # Логи
                 logs_frame = ctk.CTkScrollableFrame(container, fg_color="#1E293B")
                 logs_frame.pack(fill="both", expand=True, pady=5)
 
@@ -771,13 +684,11 @@ class LearnEasyWithAuth(ctk.CTk):
                     row.pack(fill="x", pady=2)
                     row.pack_propagate(False)
 
-                    # Форматування часу
                     time_str = log[0].strftime("%d.%m.%Y %H:%M") if log[0] else "-"
 
                     ctk.CTkLabel(row, text=time_str, width=150, anchor="w").pack(side="left", padx=10)
                     ctk.CTkLabel(row, text=log[1] or "-", width=120, anchor="w").pack(side="left", padx=10)
 
-                    # Колір для типу дії
                     action_colors = {
                         'CREATE': '#10B981',
                         'UPDATE': '#F59E0B',
@@ -797,7 +708,6 @@ class LearnEasyWithAuth(ctk.CTk):
 
                     ctk.CTkLabel(row, text=log[3] or "-", width=100, anchor="w").pack(side="left", padx=10)
 
-                    # Обрізаємо довгі деталі
                     details = log[4] or "-"
                     if len(details) > 40:
                         details = details[:37] + "..."
@@ -827,9 +737,7 @@ class LearnEasyWithAuth(ctk.CTk):
                 font=ctk.CTkFont(size=14)
             ).pack(pady=30)
 
-    # ==================== ДОПОМІЖНІ ФУНКЦІЇ ====================
     def show_welcome_message(self, user_data: dict):
-        """Показати вітальне повідомлення"""
         permissions = self.auth.get_user_permissions()
 
         welcome_text = f"""Вітаємо, {user_data.get('username', 'User')}!
@@ -842,37 +750,28 @@ class LearnEasyWithAuth(ctk.CTk):
         messagebox.showinfo("Вхід виконано", welcome_text)
 
     def logout(self):
-        """Вихід з системи"""
         if messagebox.askyesno("Вихід", "Ви впевнені що хочете вийти?"):
-            # Логуємо вихід
             self.auth.log_action('LOGOUT', 'System', None, None, None)
 
-            # Зупиняємо popup систему
             self.popup_enabled = False
             if self.popup_thread and self.popup_thread.is_alive():
                 self.popup_thread.join(timeout=1.0)
 
-            # Виконуємо вихід
             self.auth.logout()
 
-            # Ховаємо головне вікно
             self.withdraw()
 
-            # Очищаємо інтерфейс
             for widget in self.winfo_children():
                 widget.destroy()
 
-            # Показуємо вікно входу
             self.show_login()
 
     def on_closing(self):
-        """Обробка закриття програми"""
         if messagebox.askyesno("Вихід", "Закрити додаток?"):
             if self.auth.is_authenticated():
                 self.auth.log_action('LOGOUT', 'System', None, None, 'Application closed')
                 self.auth.logout()
 
-            # Зупиняємо popup
             self.popup_enabled = False
             if self.popup_thread and self.popup_thread.is_alive():
                 self.popup_thread.join(timeout=1.0)
@@ -883,7 +782,6 @@ class LearnEasyWithAuth(ctk.CTk):
 
 
 def main():
-    """Головна функція запуску програми"""
     app = LearnEasyWithAuth()
     app.protocol("WM_DELETE_WINDOW", app.on_closing)
     app.mainloop()
