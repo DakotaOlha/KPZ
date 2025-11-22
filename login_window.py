@@ -39,45 +39,48 @@ class LoginWindow(ctk.CTk):
 
         # Logo
         logo_frame = ctk.CTkFrame(main_frame, fg_color="#1E293B", corner_radius=15)
-        logo_frame.pack(fill="x", pady=(0, 30))
+        logo_frame.pack(fill="x", pady=(0, 20))
 
         app_title = ctk.CTkLabel(
             logo_frame,
             text="Learn Easy",
-            font=ctk.CTkFont(size=42, weight="bold"),
+            font=ctk.CTkFont(size=36, weight="bold"),
             text_color="#3B82F6"
         )
-        app_title.pack(pady=(30, 10))
+        app_title.pack(pady=(20, 5))
 
         subtitle = ctk.CTkLabel(
             logo_frame,
             text="Система управління навчанням",
-            font=ctk.CTkFont(size=16),
+            font=ctk.CTkFont(size=14),
             text_color="#94A3B8"
         )
-        subtitle.pack(pady=(0, 30))
+        subtitle.pack(pady=(0, 20))
 
-        # Form
-        form_frame = ctk.CTkFrame(main_frame, fg_color="#1E293B", corner_radius=15)
-        form_frame.pack(fill="both", expand=True)
+        # Form - with scrollable frame
+        form_outer = ctk.CTkFrame(main_frame, fg_color="#1E293B", corner_radius=15)
+        form_outer.pack(fill="both", expand=True)
+
+        form_frame = ctk.CTkScrollableFrame(form_outer, fg_color="transparent")
+        form_frame.pack(fill="both", expand=True, padx=10, pady=10)
 
         form_title = ctk.CTkLabel(
             form_frame,
             text="Вхід в систему",
-            font=ctk.CTkFont(size=24, weight="bold")
+            font=ctk.CTkFont(size=22, weight="bold")
         )
-        form_title.pack(pady=(30, 20))
+        form_title.pack(pady=(20, 15))
 
         # Тип автентифікації
         auth_type_frame = ctk.CTkFrame(form_frame, fg_color="transparent")
-        auth_type_frame.pack(fill="x", padx=40, pady=(10, 20))
+        auth_type_frame.pack(fill="x", padx=30, pady=(5, 15))
 
         ctk.CTkLabel(
             auth_type_frame,
             text="Тип автентифікації",
-            font=ctk.CTkFont(size=14, weight="bold"),
+            font=ctk.CTkFont(size=13, weight="bold"),
             anchor="w"
-        ).pack(fill="x", pady=(0, 10))
+        ).pack(fill="x", pady=(0, 8))
 
         self.auth_type_var = ctk.StringVar(value="windows")
 
@@ -105,50 +108,50 @@ class LoginWindow(ctk.CTk):
         # Контейнер для SQL полів (буде показуватись/ховатись)
         self.sql_fields_container = ctk.CTkFrame(form_frame, fg_color="transparent")
 
-        # Username
-        username_label = ctk.CTkLabel(
+        # SQL DB Username
+        sql_user_label = ctk.CTkLabel(
             self.sql_fields_container,
-            text="Ім'я користувача SQL",
-            font=ctk.CTkFont(size=14),
+            text="SQL Login (для підключення до БД):",
+            font=ctk.CTkFont(size=13),
             anchor="w"
         )
-        username_label.pack(fill="x", padx=40, pady=(10, 5))
+        sql_user_label.pack(fill="x", padx=30, pady=(8, 3))
 
-        self.username_entry = ctk.CTkEntry(
+        self.sql_username_entry = ctk.CTkEntry(
             self.sql_fields_container,
-            height=45,
-            font=ctk.CTkFont(size=14),
+            height=40,
+            font=ctk.CTkFont(size=13),
             placeholder_text="learneasy_student"
         )
-        self.username_entry.pack(fill="x", padx=40, pady=(0, 15))
+        self.sql_username_entry.pack(fill="x", padx=30, pady=(0, 10))
 
-        # Password
-        password_label = ctk.CTkLabel(
+        # SQL DB Password
+        sql_pass_label = ctk.CTkLabel(
             self.sql_fields_container,
-            text="Пароль SQL",
-            font=ctk.CTkFont(size=14),
+            text="SQL Password (для підключення до БД):",
+            font=ctk.CTkFont(size=13),
             anchor="w"
         )
-        password_label.pack(fill="x", padx=40, pady=(10, 5))
+        sql_pass_label.pack(fill="x", padx=30, pady=(5, 3))
 
-        self.password_entry = ctk.CTkEntry(
+        self.sql_password_entry = ctk.CTkEntry(
             self.sql_fields_container,
-            height=45,
-            font=ctk.CTkFont(size=14),
-            placeholder_text="Введіть пароль",
+            height=40,
+            font=ctk.CTkFont(size=13),
+            placeholder_text="Введіть пароль БД",
             show="●"
         )
-        self.password_entry.pack(fill="x", padx=40, pady=(0, 10))
+        self.sql_password_entry.pack(fill="x", padx=30, pady=(0, 10))
 
         self.show_password_var = ctk.BooleanVar(value=False)
         show_password_checkbox = ctk.CTkCheckBox(
             self.sql_fields_container,
-            text="Показати пароль",
+            text="Показати паролі",
             variable=self.show_password_var,
             command=self.toggle_password_visibility,
-            font=ctk.CTkFont(size=12)
+            font=ctk.CTkFont(size=11)
         )
-        show_password_checkbox.pack(anchor="w", padx=40, pady=(0, 20))
+        show_password_checkbox.pack(anchor="w", padx=30, pady=(0, 15))
 
         # Спочатку ховаємо SQL поля (Windows auth за замовчуванням)
         self.toggle_credentials_fields()
@@ -158,20 +161,21 @@ class LoginWindow(ctk.CTk):
             form_frame,
             text="Увійти",
             command=self.login,
-            height=50,
-            font=ctk.CTkFont(size=16, weight="bold"),
+            height=45,
+            font=ctk.CTkFont(size=15, weight="bold"),
             fg_color="#3B82F6",
             hover_color="#2563EB"
         )
-        self.login_button.pack(fill="x", padx=40, pady=(20, 15))
+        self.login_button.pack(fill="x", padx=30, pady=(15, 10))
 
         self.status_label = ctk.CTkLabel(
             form_frame,
             text="",
-            font=ctk.CTkFont(size=12),
-            text_color="#EF4444"
+            font=ctk.CTkFont(size=11),
+            text_color="#EF4444",
+            wraplength=380
         )
-        self.status_label.pack(pady=(5, 20))
+        self.status_label.pack(pady=(5, 15))
 
     def toggle_credentials_fields(self):
         """Показати/приховати поля SQL логіна"""
@@ -181,50 +185,24 @@ class LoginWindow(ctk.CTk):
         else:
             # Показуємо SQL поля
             self.sql_fields_container.pack(fill="x", pady=(10, 0))
-            self.username_entry.focus()
+            self.sql_username_entry.focus()
 
     def toggle_password_visibility(self):
         if self.show_password_var.get():
+            self.sql_password_entry.configure(show="")
             self.password_entry.configure(show="")
         else:
+            self.sql_password_entry.configure(show="●")
             self.password_entry.configure(show="●")
 
     def login(self):
         auth_type = self.auth_type_var.get()
 
-        # Визначаємо облікові дані залежно від типу автентифікації
         if auth_type == "sql":
-            sql_username = self.username_entry.get().strip()
-            sql_password = self.password_entry.get().strip()
-
-            if not sql_username:
-                self.show_error("Введіть ім'я користувача SQL")
-                self.username_entry.focus()
-                return
-
-            if not sql_password:
-                self.show_error("Введіть пароль SQL")
-                self.password_entry.focus()
-                return
-
-            # Перепідключаємося до БД з SQL credentials
-            self.status_label.configure(text="Підключення до БД...", text_color="#F59E0B")
-            self.update()
-
-            if not self.db_manager.reconnect_with_credentials(sql_username, sql_password):
-                self.show_error("Не вдалося підключитися з цими обліковими даними")
-                return
-
-            # Оновлюємо auth_manager з новим підключенням
-            self.auth.conn = self.db_manager.conn
-            self.auth.cursor = self.db_manager.cursor
-
-            # Для системи ролей використовуємо той самий username
-            username = sql_username
-            password = sql_password
+            username = self.sql_username_entry.get().strip()
+            password = self.sql_password_entry.get().strip()
 
         else:
-            # Windows Authentication
             username = "admin"
             password = "admin123"
 
@@ -351,7 +329,7 @@ class QuickLoginDialog(ctk.CTkToplevel):
             self.password_entry.focus()
             return
 
-        self.update()  # оновлення GUI перед блокуючим викликом
+        self.update()
 
         try:
             import socket
